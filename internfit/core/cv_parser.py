@@ -8,6 +8,7 @@ from typing import Iterable
 import re
 
 from docx import Document
+from pypdf import PdfReader
 
 
 EVIDENCE_RULES = {
@@ -93,6 +94,28 @@ def extract_docx_bytes(data: bytes | BinaryIO) -> list[str]:
             if row_text:
                 lines.append(row_text)
     return lines
+
+
+def extract_pdf_bytes(data: bytes) -> list[str]:
+    """Extract selectable PDF text without persisting the uploaded file."""
+    try:
+        reader = PdfReader(BytesIO(data))
+        lines: list[str] = []
+        for page in reader.pages:
+            text = page.extract_text() or ""
+            lines.extend(line.strip() for line in text.splitlines() if line.strip())
+        return lines
+    except Exception as exc:
+        raise ValueError("Could not read this PDF. Please upload a text-based PDF.") from exc
+
+
+def parse_pdf_bytes(data: bytes, source_name: str = "uploaded_cv.pdf") -> CandidateProfile:
+    lines = extract_pdf_bytes(data)
+    if not lines:
+        raise ValueError(
+            "No selectable text found in this PDF. Please upload a text-based PDF instead of a scanned image."
+        )
+    return _profile_from_lines(lines, source_name)
 
 
 def _matching_lines(lines: Iterable[str], needles: tuple[str, ...]) -> list[str]:
