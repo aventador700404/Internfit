@@ -255,7 +255,7 @@
         } catch { return null; }
       };
       const CV_STORAGE_KEY = 'internfit:cv-session:v1';
-      const MAX_CV_CACHE_BYTES = 3 * 1024 * 1024;
+      const MAX_CV_CACHE_BYTES = 4 * 1024 * 1024;
       let cvCacheVersion = 0;
       const arrayBufferToBase64 = buffer => {
         const bytes = new Uint8Array(buffer);
