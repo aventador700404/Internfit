@@ -172,7 +172,7 @@
           </div>
         </section>
       </section>
-      <p class="footnote">CV parser connected · public-link extraction active for readable pages.</p>
+      <p class="footnote">CV parser connected · kept temporarily in this browser session · public-link extraction active for readable pages.</p>
     </main>
     <script>
       const upload = document.querySelector('#cv-upload');
@@ -221,9 +221,11 @@
       const setFile = file => {
         if (!file) return;
         selectedFile = file;
+        try { sessionStorage.removeItem(CV_STORAGE_KEY); } catch {}
         fileName.textContent = file.name;
         fileReady.classList.add('active');
         status.textContent = '';
+        cacheCv(file);
       };
       upload.addEventListener('change', event => setFile(event.target.files[0]));
       ['dragenter', 'dragover'].forEach(type => dropzone.addEventListener(type, event => { event.preventDefault(); dropzone.classList.add('dragging'); }));
@@ -251,6 +253,57 @@
           const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || 'null');
           return saved && saved.data ? saved : null;
         } catch { return null; }
+      };
+      const CV_STORAGE_KEY = 'internfit:cv-session:v1';
+      const MAX_CV_CACHE_BYTES = 3 * 1024 * 1024;
+      let cvCacheVersion = 0;
+      const arrayBufferToBase64 = buffer => {
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        const chunkSize = 0x8000;
+        for (let index = 0; index < bytes.length; index += chunkSize) {
+          binary += String.fromCharCode(...bytes.subarray(index, Math.min(index + chunkSize, bytes.length)));
+        }
+        return btoa(binary);
+      };
+      const base64ToBytes = value => {
+        const binary = atob(value);
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index += 1) {
+          bytes[index] = binary.charCodeAt(index);
+        }
+        return bytes;
+      };
+      const cacheCv = async file => {
+        const version = ++cvCacheVersion;
+        try {
+          const buffer = await file.arrayBuffer();
+          if (version !== cvCacheVersion || buffer.byteLength > MAX_CV_CACHE_BYTES) return;
+          sessionStorage.setItem(CV_STORAGE_KEY, JSON.stringify({
+            name: file.name,
+            type: file.type,
+            lastModified: file.lastModified,
+            data: arrayBufferToBase64(buffer),
+          }));
+        } catch {}
+      };
+      const restoreCachedCv = () => {
+        try {
+          const saved = JSON.parse(sessionStorage.getItem(CV_STORAGE_KEY) || 'null');
+          if (!saved?.name || !saved?.data) return false;
+          const bytes = base64ToBytes(saved.data);
+          selectedFile = new File(
+            [bytes],
+            saved.name,
+            { type: saved.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', lastModified: saved.lastModified || Date.now() },
+          );
+          fileName.textContent = saved.name;
+          fileReady.classList.add('active');
+          return true;
+        } catch {
+          try { sessionStorage.removeItem(CV_STORAGE_KEY); } catch {}
+          return false;
+        }
       };
       const renderAnalysis = (data, inputUrl, { animate = true, scroll = false } = {}) => {
         scoreNumber.textContent = data.score;
@@ -287,6 +340,7 @@
         status.textContent = 'Restored the last analysis for this tab.';
         return true;
       };
+      restoreCachedCv();
       const initialResultRequested = window.location.hash === '#result';
       if (initialResultRequested && loadAnalysis()) {
         history.replaceState({ view: 'result' }, '', resultPageUrl());
