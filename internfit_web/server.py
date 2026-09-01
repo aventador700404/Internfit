@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT.parent / "internfit"))
 
-from core.cv_parser import parse_cv_bytes  # noqa: E402
+from core.cv_parser import parse_cv_bytes, parse_pdf_bytes  # noqa: E402
 from core.job_parser import fetch_job_posting, job_from_text  # noqa: E402
 from core.scoring import assess_fit  # noqa: E402
 
@@ -92,7 +92,13 @@ class AppHandler(BaseHTTPRequestHandler):
             filename = str(fields.get("cv", {}).get("filename", "uploaded_cv.docx"))
             if not isinstance(cv, bytes) or not cv:
                 raise ValueError("CV file is required")
-            candidate = parse_cv_bytes(cv, filename)
+            suffix = Path(filename).suffix.casefold()
+            if suffix == ".pdf":
+                candidate = parse_pdf_bytes(cv, filename)
+            elif suffix == ".docx":
+                candidate = parse_cv_bytes(cv, filename)
+            else:
+                raise ValueError("Please upload a .docx or .pdf CV.")
             job_url = _text_field(fields, "job_url")
             job_text = _text_field(fields, "job_text")
             analysis_source = "job_url"
