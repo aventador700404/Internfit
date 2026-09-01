@@ -40,3 +40,18 @@ class JobParserTests(unittest.TestCase):
         self.assertEqual(posting.company, "Example Corp")
         self.assertIn("Support customer research.", posting.text)
         self.assertNotIn("japanese powerpoint", posting.text)
+
+    def test_prefers_job_heading_over_generic_site_heading(self):
+        html = """
+        <html><body><h1>Example Careers</h1>
+        <section class="job_detail_header"><h3 class="title">Operations Intern</h3></section>
+        </body></html>
+        """
+        with NamedTemporaryFile(mode="w", suffix=".html", delete=False) as file:
+            file.write(html)
+            path = Path(file.name)
+        try:
+            posting = fetch_job_posting(path.as_uri())
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertEqual(posting.title, "Operations Intern")

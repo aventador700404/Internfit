@@ -21,6 +21,8 @@ class _TextExtractor(HTMLParser):
         self.title = ""
         self.in_h1 = False
         self.h1 = ""
+        self.in_job_heading = False
+        self.job_heading = ""
         self.meta: dict[str, str] = {}
         self._ignored_tags: list[str] = []
 
@@ -43,6 +45,9 @@ class _TextExtractor(HTMLParser):
             self.in_title = True
         if tag == "h1":
             self.in_h1 = True
+        attributes = {key.lower(): value or "" for key, value in attrs}
+        if tag in {"h1", "h2", "h3"} and "title" in attributes.get("class", "").lower().split():
+            self.in_job_heading = True
         if tag in {"p", "br", "li", "h1", "h2", "h3", "div"}:
             self.parts.append("\n")
 
@@ -56,6 +61,8 @@ class _TextExtractor(HTMLParser):
             self.in_title = False
         if tag == "h1":
             self.in_h1 = False
+        if tag in {"h1", "h2", "h3"} and self.in_job_heading:
+            self.in_job_heading = False
         if tag in {"p", "li", "h1", "h2", "h3", "div"}:
             self.parts.append("\n")
 
@@ -69,6 +76,8 @@ class _TextExtractor(HTMLParser):
                 self.title += clean + " "
             if self.in_h1:
                 self.h1 += clean + " "
+            if self.in_job_heading:
+                self.job_heading += clean + " "
 
 
 @dataclass
@@ -140,7 +149,7 @@ def fetch_job_posting(url: str, timeout: int = 12) -> JobPosting:
     parser = _TextExtractor()
     parser.feed(html)
     text = normalize_text("".join(parser.parts))
-    title = normalize_text(parser.meta.get("og:title", "") or parser.title or parser.h1) or "Untitled job posting"
+    title = normalize_text(parser.meta.get("og:title", "") or parser.job_heading or parser.title or parser.h1) or "Untitled job posting"
     company = (
         normalize_text(parser.meta.get("og:site_name", ""))
         or _company_from_title(title)
