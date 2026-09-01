@@ -5,6 +5,7 @@ from pathlib import Path
 from io import BytesIO
 from typing import BinaryIO
 from typing import Iterable
+import re
 
 from docx import Document
 
@@ -18,6 +19,10 @@ EVIDENCE_RULES = {
     "technology": ("technology", "information systems", "digital", "platform", "ai", "generative ai"),
     "finance": ("finance", "fintech", "investment", "financial", "m&a", "acquisition"),
     "event_management": ("event", "recruitment", "onboarding", "training", "member"),
+    "marketing": ("marketing", "social media", "campaign", "influencer", "content strategy", "brand"),
+    "sales": ("sales", "business development", "lead generation", "account management"),
+    "software_engineering": ("software engineer", "software engineering", "backend", "frontend", "api", "programming", "developer", "coding"),
+    "accounting": ("accounting", "audit", "journal entries", "reconciliation", "monthly close", "bookkeeping"),
 }
 
 LANGUAGE_RULES = {
@@ -34,6 +39,18 @@ TOOL_RULES = {
     "word": ("word",),
     "sql": ("sqld", "sql"),
     "ai_tools": ("generative ai", "ai tools", "rapid prototyping"),
+    "python": ("python",),
+    "java": ("java",),
+    "javascript": ("javascript", "typescript"),
+    "git": ("git", "github"),
+    "docker": ("docker",),
+    "kubernetes": ("kubernetes",),
+    "power_bi": ("power bi",),
+    "notion": ("notion",),
+    "asana": ("asana",),
+    "sap": ("sap",),
+    "erp": ("erp",),
+    "figma": ("figma",),
 }
 
 
@@ -76,7 +93,12 @@ def extract_docx_bytes(data: bytes | BinaryIO) -> list[str]:
 
 
 def _matching_lines(lines: Iterable[str], needles: tuple[str, ...]) -> list[str]:
-    return [line for line in lines if any(needle in line.lower() for needle in needles)]
+    return [line for line in lines if any(_contains_term(line, needle) for needle in needles)]
+
+
+def _contains_term(text: str, term: str) -> bool:
+    escaped = re.escape(term.lower().strip()).replace(r"\ ", r"\s+")
+    return bool(re.search(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", text.lower()))
 
 
 def parse_cv(file_path: str | Path) -> CandidateProfile:
@@ -94,12 +116,12 @@ def _profile_from_lines(lines: list[str], source_name: str) -> CandidateProfile:
     languages = {
         language
         for language, needles in LANGUAGE_RULES.items()
-        if any(needle in raw_text.lower() for needle in needles)
+        if any(_contains_term(raw_text, needle) for needle in needles)
     }
     tools = {
         tool
         for tool, needles in TOOL_RULES.items()
-        if any(needle in raw_text.lower() for needle in needles)
+        if any(_contains_term(raw_text, needle) for needle in needles)
     }
     graduation = next((line for line in lines if "B.B.A. Candidate" in line), None)
     education = [line for line in lines if "University" in line or "Student" in line]

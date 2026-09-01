@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Iterable
+import re
 
 from .cv_parser import CandidateProfile
 from .job_parser import JobPosting
@@ -16,6 +17,10 @@ TAG_PATTERNS = {
     "technology": ("technology", "digital", "ai", "robotics", "systems", "deep tech"),
     "finance": ("finance", "financial", "capital markets", "bond", "debt", "investment"),
     "event_management": ("event", "workshop", "training", "logistics", "coordination"),
+    "marketing": ("marketing", "social media", "campaign", "influencer", "content strategy", "brand"),
+    "sales": ("sales", "business development", "lead generation", "account management"),
+    "software_engineering": ("software engineer", "software engineering", "backend", "frontend", "api", "programming", "developer", "coding"),
+    "accounting": ("accounting", "audit", "journal entries", "reconciliation", "monthly close", "bookkeeping"),
     "capital_markets": ("capital markets", "bond", "debt capital", "dc m"),
     "market_monitoring": ("market monitoring", "financial markets", "trading"),
     "pitch_materials": ("pitch", "marketing material", "investor presentation"),
@@ -28,6 +33,18 @@ TOOL_PATTERNS = {
     "word": ("word",),
     "sql": ("sql",),
     "ai_tools": ("ai tool", "ai collaboration", "generative ai", "artificial intelligence"),
+    "python": ("python",),
+    "java": ("java",),
+    "javascript": ("javascript", "typescript"),
+    "git": ("git", "github"),
+    "docker": ("docker",),
+    "kubernetes": ("kubernetes",),
+    "power_bi": ("power bi",),
+    "notion": ("notion",),
+    "asana": ("asana",),
+    "sap": ("sap",),
+    "erp": ("erp",),
+    "figma": ("figma",),
 }
 
 LANGUAGE_PATTERNS = {
@@ -53,7 +70,13 @@ class FitResult:
 
 def _present_tags(text: str, patterns: dict[str, tuple[str, ...]]) -> set[str]:
     lowered = text.lower()
-    return {tag for tag, words in patterns.items() if any(word in lowered for word in words)}
+    return {tag for tag, words in patterns.items() if any(_contains_term(lowered, word) for word in words)}
+
+
+def _contains_term(text: str, term: str) -> bool:
+    """Match a whole word/phrase so `ai`, `git`, and `word` don't hit substrings."""
+    escaped = re.escape(term.lower().strip()).replace(r"\ ", r"\s+")
+    return bool(re.search(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", text))
 
 
 def _score_coverage(required: set[str], candidate: set[str], weight: int) -> int:
@@ -74,6 +97,10 @@ def _passed_core_checks(candidate: CandidateProfile, checks: set[str]) -> set[st
         passed.add("japanese")
     if "capital_markets_knowledge" in checks and "capital markets" in candidate.raw_text.lower():
         passed.add("capital_markets_knowledge")
+    if "computer_science_degree" in checks and _contains_term(candidate.raw_text, "computer science"):
+        passed.add("computer_science_degree")
+    if "accounting_degree" in checks and _contains_term(candidate.raw_text, "accounting"):
+        passed.add("accounting_degree")
     return passed
 
 
@@ -109,6 +136,10 @@ def assess_fit(candidate: CandidateProfile, job: JobPosting) -> FitResult:
     required_tools = specification.get("required_tools", required_tools)
     required_languages = specification.get("required_languages", required_languages)
     core_checks = specification.get("core_checks", {"business_degree", "english"} if "english" in required_languages else {"business_degree"})
+    if any(_contains_term(text, phrase) for phrase in ("computer science degree", "computer science major", "software engineering degree", "computer engineering degree")):
+        core_checks = set(core_checks) | {"computer_science_degree"}
+    if any(_contains_term(text, phrase) for phrase in ("accounting degree", "accounting major")):
+        core_checks = set(core_checks) | {"accounting_degree"}
 
     blockers: list[str] = []
     for language in ("japanese", "chinese"):

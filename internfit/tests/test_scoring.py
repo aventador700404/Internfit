@@ -39,6 +39,14 @@ class FitScoringTests(unittest.TestCase):
         self.assertEqual(result.eligibility, "Risk")
         self.assertLessEqual(result.score, 55)
 
+    def test_short_terms_do_not_match_inside_unrelated_words(self):
+        result = assess_fit(
+            self.candidate,
+            SAMPLE_JOBS["RLWRLD — AI & Robotics Strategy Intern, Japanese (eligibility fail expected)"],
+        )
+        self.assertNotIn("japanese", self.candidate.languages)
+        self.assertNotEqual(result.score, 100)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -136,10 +136,10 @@
         <article class="panel">
           <div class="panel-label"><span class="number">2</span> Job posting</div>
           <label for="job-url">Public job-posting link</label>
-          <input id="job-url" type="url" value="https://jobs.sap.com/job/Seoul-Strategy-&amp;-Operations-Intern,-SAP-Labs-East-Asia-Korea-06578/1427409933/" />
+          <input id="job-url" type="url" placeholder="https://careers.example.com/jobs/..." />
           <div class="source-preview">
-            <div class="source-logo">S</div>
-            <div><div class="source-role">Strategy &amp; Operations Intern</div><div class="source-meta">SAP Labs East Asia Korea · Seoul</div></div>
+            <div class="source-logo" id="source-logo">↗</div>
+            <div><div class="source-role" id="source-role">Add a public job link</div><div class="source-meta" id="source-meta">The posting details will appear here</div></div>
           </div>
           <div class="job-fallback" id="job-fallback">
             <label for="job-text">Paste the job description</label>
@@ -172,8 +172,12 @@
       const result = document.querySelector('#result');
       const analyzeButton = document.querySelector('#analyze');
       const status = document.querySelector('#analysis-status');
+      const jobUrlInput = document.querySelector('#job-url');
       const fallback = document.querySelector('#job-fallback');
       const jobTextInput = document.querySelector('#job-text');
+      const sourceLogo = document.querySelector('#source-logo');
+      const sourceRole = document.querySelector('#source-role');
+      const sourceMeta = document.querySelector('#source-meta');
       const scoreNumber = document.querySelector('#score-number');
       const scoreLabel = document.querySelector('#score-label');
       const jobTitleResult = document.querySelector('#job-title-result');
@@ -185,6 +189,24 @@
       const strengthsList = document.querySelector('#strengths-list');
       const gapsList = document.querySelector('#gaps-list');
       let selectedFile = null;
+      const hostLabel = value => {
+        try { return new URL(value).hostname.replace(/^www\./, ''); } catch { return ''; }
+      };
+      const updateSourcePreview = (url, title = '', company = '') => {
+        if (!url) {
+          sourceLogo.textContent = '↗';
+          sourceRole.textContent = 'Add a public job link';
+          sourceMeta.textContent = 'The posting details will appear here';
+          return;
+        }
+        const host = hostLabel(url);
+        const label = company && company !== 'Unknown' ? company : host || 'Public posting';
+        sourceLogo.textContent = (label.replace(/[^a-z0-9]/gi, '').slice(0, 1) || '↗').toUpperCase();
+        sourceRole.textContent = title || 'Public job posting';
+        sourceMeta.textContent = label;
+      };
+      jobUrlInput.addEventListener('input', () => updateSourcePreview(jobUrlInput.value.trim()));
+      updateSourcePreview('');
       const setFile = file => {
         if (!file) return;
         selectedFile = file;
@@ -211,7 +233,7 @@
           status.textContent = 'Upload a .docx CV first.';
           return;
         }
-        const inputUrl = document.querySelector('#job-url').value.trim();
+        const inputUrl = jobUrlInput.value.trim();
         if (!inputUrl) {
           status.textContent = 'Add a public job-posting URL first.';
           return;
@@ -240,8 +262,10 @@
           scoreNumber.textContent = data.score;
           scoreLabel.textContent = `${data.recommendation} · Grade ${data.grade}`;
           jobTitleResult.textContent = data.job_title || 'Job fit result';
+          const company = data.company && data.company !== 'Unknown' ? data.company : hostLabel(inputUrl) || 'Unknown company';
           const sourceLabel = data.analysis_source === 'pasted_text_fallback' ? 'Pasted job description' : inputUrl;
-          jobMeta.textContent = `${data.company || 'Unknown company'} · ${sourceLabel}`;
+          jobMeta.textContent = `${company} · ${sourceLabel}`;
+          updateSourcePreview(inputUrl, data.job_title || 'Public job posting', company);
           applyLink.href = data.apply_url || inputUrl;
           eligibilityValue.textContent = data.eligibility || '—';
           bestEvidenceValue.textContent = data.strengths?.[0]?.replaceAll('_', ' ') || '—';
