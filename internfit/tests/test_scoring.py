@@ -38,6 +38,7 @@ class FitScoringTests(unittest.TestCase):
         result = assess_fit(self.candidate, SAMPLE_JOBS["RLWRLD — AI & Robotics Strategy Intern, Japanese (eligibility fail expected)"])
         self.assertEqual(result.eligibility, "Risk")
         self.assertLessEqual(result.score, 55)
+        self.assertTrue(any("eligibility gate" in detail for detail in result.gap_details))
 
     def test_short_terms_do_not_match_inside_unrelated_words(self):
         result = assess_fit(
@@ -46,6 +47,22 @@ class FitScoringTests(unittest.TestCase):
         )
         self.assertNotIn("japanese", self.candidate.languages)
         self.assertNotEqual(result.score, 100)
+
+    def test_explanations_are_unique_and_gap_guidance_is_actionable(self):
+        result = assess_fit(self.candidate, SAMPLE_JOBS["ING — Debt Capital Markets Intern (mid-fit expected)"])
+        self.assertTrue(result.match_explanations)
+        self.assertEqual(
+            len(result.match_explanations),
+            len({explanation.casefold() for explanation in result.match_explanations}),
+        )
+        self.assertTrue(result.gap_details)
+        self.assertTrue(any("capital-markets" in detail for detail in result.gap_details))
+
+    def test_missing_specific_domain_is_penalized(self):
+        job = SAMPLE_JOBS["RLWRLD — AI & Robotics Strategy Intern, Japanese (eligibility fail expected)"]
+        result = assess_fit(self.candidate, job)
+        self.assertLess(result.score, 60)
+        self.assertTrue(any("robotics" in detail for detail in result.gap_details))
 
 
 if __name__ == "__main__":

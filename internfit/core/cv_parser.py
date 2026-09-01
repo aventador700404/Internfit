@@ -21,7 +21,10 @@ EVIDENCE_RULES = {
     "event_management": ("event", "recruitment", "onboarding", "training", "member"),
     "marketing": ("marketing", "social media", "campaign", "influencer", "content strategy", "brand"),
     "sales": ("sales", "business development", "lead generation", "account management"),
-    "software_engineering": ("software engineer", "software engineering", "backend", "frontend", "api", "programming", "developer", "coding"),
+    # Keep generic credentials such as "SQL Developer" from turning a business
+    # candidate into a software engineer.  A real engineering signal should be
+    # an engineering role, a programming deliverable, or a concrete stack.
+    "software_engineering": ("software engineer", "software engineering", "backend", "frontend", "api", "programming language", "programming project", "software developer", "coding"),
     "accounting": ("accounting", "audit", "journal entries", "reconciliation", "monthly close", "bookkeeping"),
 }
 

@@ -81,11 +81,11 @@ if analyze:
         st.subheader("Matched strengths")
         st.write(result.strengths or "No strong evidence match found yet.")
         st.subheader("CV evidence used")
-        for line in result.evidence:
+        for line in (result.match_explanations or result.evidence):
             st.write(f"- {line}")
     with right:
         st.subheader("Gaps to address")
-        st.write(result.gaps or "No material gap detected.")
+        st.write(result.gap_details or result.gaps or "No material gap detected.")
         if result.blockers:
             st.subheader("Eligibility blockers")
             for blocker in result.blockers:

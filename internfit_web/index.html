@@ -269,9 +269,14 @@
           applyLink.href = data.apply_url || inputUrl;
           eligibilityValue.textContent = data.eligibility || '—';
           bestEvidenceValue.textContent = data.strengths?.[0]?.replaceAll('_', ' ') || '—';
-          const gaps = Array.isArray(data.gaps) ? data.gaps : [];
+          const gaps = Array.isArray(data.gap_details) && data.gap_details.length
+            ? data.gap_details
+            : (Array.isArray(data.gaps) ? data.gaps : []);
           cvEditsValue.textContent = `${gaps.length} suggestion${gaps.length === 1 ? '' : 's'}`;
-          renderList(strengthsList, data.evidence?.length ? data.evidence : data.strengths, 'positive', 'No direct evidence matched.');
+          const explanations = Array.isArray(data.match_explanations) && data.match_explanations.length
+            ? data.match_explanations
+            : (data.evidence?.length ? data.evidence : data.strengths);
+          renderList(strengthsList, explanations, 'positive', 'No direct evidence matched.');
           renderList(gapsList, gaps, 'gap', 'No obvious CV gaps found.');
           status.textContent = 'Analysis complete.';
           result.classList.remove('active');
