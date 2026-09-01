@@ -1,0 +1,7 @@
+upload/
+*.docx
+*.zip
+__pycache__/
+*.py[cod]
+.venv/
+.env
