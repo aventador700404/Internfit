@@ -236,6 +236,72 @@
           element.append(item);
         });
       };
+
+      const STORAGE_KEY = 'internfit:last-analysis:v1';
+      const currentPageUrl = () => `${window.location.pathname}${window.location.search}`;
+      const resultPageUrl = () => `${currentPageUrl()}#result`;
+      const saveAnalysis = snapshot => {
+        try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot)); } catch {}
+      };
+      const loadAnalysis = () => {
+        try {
+          const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || 'null');
+          return saved && saved.data ? saved : null;
+        } catch { return null; }
+      };
+      const renderAnalysis = (data, inputUrl, { animate = true, scroll = false } = {}) => {
+        scoreNumber.textContent = data.score;
+        scoreLabel.textContent = `${data.recommendation} · Grade ${data.grade}`;
+        jobTitleResult.textContent = data.job_title || 'Job fit result';
+        const company = data.company && data.company !== 'Unknown' ? data.company : hostLabel(inputUrl) || 'Unknown company';
+        const sourceLabel = data.analysis_source === 'pasted_text_fallback' ? 'Pasted job description' : inputUrl;
+        jobMeta.textContent = `${company} · ${sourceLabel}`;
+        updateSourcePreview(inputUrl, data.job_title || 'Public job posting', company);
+        applyLink.href = data.apply_url || inputUrl;
+        eligibilityValue.textContent = data.eligibility || '—';
+        bestEvidenceValue.textContent = data.strengths?.[0]?.replaceAll('_', ' ') || '—';
+        const gaps = Array.isArray(data.gap_details) && data.gap_details.length
+          ? data.gap_details
+          : (Array.isArray(data.gaps) ? data.gaps : []);
+        cvEditsValue.textContent = `${gaps.length} suggestion${gaps.length === 1 ? '' : 's'}`;
+        const explanations = Array.isArray(data.match_explanations) && data.match_explanations.length
+          ? data.match_explanations
+          : (data.evidence?.length ? data.evidence : data.strengths);
+        renderList(strengthsList, explanations, 'positive', 'No direct evidence matched.');
+        renderList(gapsList, gaps, 'gap', 'No obvious CV gaps found.');
+        result.classList.remove('active');
+        if (animate) void result.offsetWidth;
+        result.classList.add('active');
+        if (scroll) result.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      };
+      const restoreSavedAnalysis = ({ scroll = false } = {}) => {
+        const saved = loadAnalysis();
+        if (!saved) return false;
+        const inputUrl = String(saved.jobUrl || saved.data.apply_url || '');
+        jobUrlInput.value = inputUrl;
+        jobTextInput.value = saved.jobText || '';
+        renderAnalysis(saved.data, inputUrl, { animate: false, scroll });
+        status.textContent = 'Restored the last analysis for this tab.';
+        return true;
+      };
+      const initialResultRequested = window.location.hash === '#result';
+      if (initialResultRequested && loadAnalysis()) {
+        history.replaceState({ view: 'result' }, '', resultPageUrl());
+        restoreSavedAnalysis();
+      } else {
+        history.replaceState({ view: 'form' }, '', currentPageUrl());
+      }
+      window.addEventListener('popstate', event => {
+        if (event.state?.view === 'result' || window.location.hash === '#result') {
+          if (!restoreSavedAnalysis()) {
+            result.classList.remove('active');
+            history.replaceState({ view: 'form' }, '', currentPageUrl());
+          }
+          return;
+        }
+        result.classList.remove('active');
+        status.textContent = '';
+      });
       analyzeButton.addEventListener('click', async () => {
         if (!selectedFile) {
           status.textContent = 'Upload a .docx CV first.';
@@ -267,30 +333,18 @@
             }
             throw new Error(data.error || 'The analysis could not be completed.');
           }
-          scoreNumber.textContent = data.score;
-          scoreLabel.textContent = `${data.recommendation} · Grade ${data.grade}`;
-          jobTitleResult.textContent = data.job_title || 'Job fit result';
-          const company = data.company && data.company !== 'Unknown' ? data.company : hostLabel(inputUrl) || 'Unknown company';
-          const sourceLabel = data.analysis_source === 'pasted_text_fallback' ? 'Pasted job description' : inputUrl;
-          jobMeta.textContent = `${company} · ${sourceLabel}`;
-          updateSourcePreview(inputUrl, data.job_title || 'Public job posting', company);
-          applyLink.href = data.apply_url || inputUrl;
-          eligibilityValue.textContent = data.eligibility || '—';
-          bestEvidenceValue.textContent = data.strengths?.[0]?.replaceAll('_', ' ') || '—';
-          const gaps = Array.isArray(data.gap_details) && data.gap_details.length
-            ? data.gap_details
-            : (Array.isArray(data.gaps) ? data.gaps : []);
-          cvEditsValue.textContent = `${gaps.length} suggestion${gaps.length === 1 ? '' : 's'}`;
-          const explanations = Array.isArray(data.match_explanations) && data.match_explanations.length
-            ? data.match_explanations
-            : (data.evidence?.length ? data.evidence : data.strengths);
-          renderList(strengthsList, explanations, 'positive', 'No direct evidence matched.');
-          renderList(gapsList, gaps, 'gap', 'No obvious CV gaps found.');
-          status.textContent = 'Analysis complete.';
-          result.classList.remove('active');
-          void result.offsetWidth;
-          result.classList.add('active');
-          result.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          saveAnalysis({
+            jobUrl: inputUrl,
+            jobText,
+            data,
+          });
+          renderAnalysis(data, inputUrl, { scroll: true });
+          const nextUrl = resultPageUrl();
+          if (window.location.hash === '#result') {
+            history.replaceState({ view: 'result' }, '', nextUrl);
+          } else {
+            history.pushState({ view: 'result' }, '', nextUrl);
+          }
         } catch (error) {
           status.textContent = error instanceof Error ? error.message : 'The analysis could not be completed.';
         } finally {
