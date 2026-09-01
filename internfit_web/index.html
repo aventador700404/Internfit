@@ -133,11 +133,11 @@
         <article class="panel">
           <div class="panel-label"><span class="number">1</span> Candidate profile</div>
           <label class="dropzone" id="dropzone" for="cv-upload">
-            <input id="cv-upload" type="file" accept=".docx" />
+            <input id="cv-upload" type="file" accept=".docx,.pdf" />
             <div>
               <div class="upload-icon">↑</div>
               <div class="upload-title">Drop your CV here</div>
-              <div class="upload-sub">or choose a .docx file</div>
+              <div class="upload-sub">or choose a .docx or .pdf file</div>
             </div>
           </label>
           <div class="file-ready" id="file-ready"><span class="file-dot"></span><span class="file-name" id="file-name">CV uploaded</span><span class="file-state">Ready</span></div>
@@ -295,7 +295,7 @@
           selectedFile = new File(
             [bytes],
             saved.name,
-            { type: saved.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', lastModified: saved.lastModified || Date.now() },
+            { type: saved.type || (saved.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'), lastModified: saved.lastModified || Date.now() },
           );
           fileName.textContent = saved.name;
           fileReady.classList.add('active');
@@ -373,7 +373,7 @@
       });
       analyzeButton.addEventListener('click', async () => {
         if (!selectedFile) {
-          status.textContent = 'Upload a .docx CV first.';
+          status.textContent = 'Upload a .docx or .pdf CV first.';
           return;
         }
         const inputUrl = jobUrlInput.value.trim();
