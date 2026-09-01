@@ -28,6 +28,8 @@
       .shell { max-width: 1180px; margin: 0 auto; padding: 28px 28px 54px; }
       .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 38px; }
       .brand { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 800; letter-spacing: -0.7px; }
+      .brand-home { border: 0; padding: 0; color: inherit; background: transparent; cursor: pointer; font: inherit; }
+      .brand-home:focus-visible { outline: 3px solid rgba(183,243,107,.75); outline-offset: 5px; border-radius: 12px; }
       .mark { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 10px; background: var(--ink); color: var(--accent); font-size: 18px; }
       .status { color: var(--accent-deep); background: var(--soft-green); padding: 8px 12px; border-radius: 99px; font-size: 12px; font-weight: 700; }
       .hero { display: grid; grid-template-columns: 1.15fr .85fr; gap: 46px; align-items: end; margin-bottom: 36px; }
@@ -115,7 +117,7 @@
   <body>
     <main class="shell">
       <nav class="nav">
-        <div class="brand"><span class="mark">↗</span> InternFit</div>
+        <button class="brand brand-home" id="brand-home" type="button" aria-label="Go to InternFit home"><span class="mark" aria-hidden="true">↗</span> InternFit</button>
         <div class="status">Evidence-based beta</div>
       </nav>
 
@@ -174,6 +176,7 @@
     </main>
     <script>
       const upload = document.querySelector('#cv-upload');
+      const brandHome = document.querySelector('#brand-home');
       const dropzone = document.querySelector('#dropzone');
       const fileReady = document.querySelector('#file-ready');
       const fileName = document.querySelector('#file-name');
@@ -301,6 +304,13 @@
         }
         result.classList.remove('active');
         status.textContent = '';
+      });
+
+      brandHome.addEventListener('click', () => {
+        result.classList.remove('active');
+        status.textContent = '';
+        history.replaceState({ view: 'form' }, '', currentPageUrl());
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       });
       analyzeButton.addEventListener('click', async () => {
         if (!selectedFile) {
