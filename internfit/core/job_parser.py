@@ -159,9 +159,23 @@ def fetch_job_posting(url: str, timeout: int = 12) -> JobPosting:
     full_text = normalize_text("".join(parser.parts))
     main_text = normalize_text("".join(parser.main_parts))
     # Navigation, related jobs, and legal footers can contain many unrelated
-    # keywords. Prefer semantic <main> content when it is substantial, while
-    # retaining a full-page fallback for small or non-semantic pages.
-    text = main_text if len(main_text) >= 180 else full_text
+    # keywords. Prefer semantic <main> content when it is substantial and
+    # actually looks like a job description. Application-form pages sometimes
+    # put only the form controls in <main>, so those still use the full page.
+    main_markers = (
+        "responsibilities",
+        "qualifications",
+        "requirements",
+        "what you'll do",
+        "what we’re looking for",
+        "who we're looking for",
+        "job overview",
+        "about the role",
+        "job responsibilities",
+        "profile",
+    )
+    use_main = len(main_text) >= 180 and any(marker in main_text.casefold() for marker in main_markers)
+    text = main_text if use_main else full_text
     title = normalize_text(parser.meta.get("og:title", "") or parser.job_heading or parser.title or parser.h1) or "Untitled job posting"
     company = (
         normalize_text(parser.meta.get("og:site_name", ""))

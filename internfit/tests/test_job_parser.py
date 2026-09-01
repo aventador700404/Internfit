@@ -59,7 +59,7 @@ class JobParserTests(unittest.TestCase):
     def test_prefers_semantic_main_content_over_footer_keywords(self):
         html = """
         <html><body>
-        <main><h1>Finance Intern</h1>
+        <main><h1>Finance Intern</h1><h2>Job responsibilities</h2>
         <p>Support variance analysis, reconciliation, and monthly reporting for the finance team.</p>
         <p>Use Excel to investigate discrepancies and document the result for stakeholders.</p>
         </main>
