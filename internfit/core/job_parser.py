@@ -25,6 +25,8 @@ class _TextExtractor(HTMLParser):
         self.job_heading = ""
         self.meta: dict[str, str] = {}
         self._ignored_tags: list[str] = []
+        self._main_depth = 0
+        self.main_parts: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
@@ -35,6 +37,8 @@ class _TextExtractor(HTMLParser):
         if tag in IGNORED_TAGS:
             self._ignored_tags.append(tag)
             return
+        if tag == "main":
+            self._main_depth += 1
         if tag == "meta":
             attributes = {key.lower(): value or "" for key, value in attrs}
             key = (attributes.get("property") or attributes.get("name") or "").lower()
@@ -57,6 +61,8 @@ class _TextExtractor(HTMLParser):
             if tag == self._ignored_tags[-1]:
                 self._ignored_tags.pop()
             return
+        if tag == "main":
+            self._main_depth = max(0, self._main_depth - 1)
         if tag == "title":
             self.in_title = False
         if tag == "h1":
@@ -72,6 +78,8 @@ class _TextExtractor(HTMLParser):
         clean = data.strip()
         if clean:
             self.parts.append(clean + " ")
+            if self._main_depth:
+                self.main_parts.append(clean + " ")
             if self.in_title:
                 self.title += clean + " "
             if self.in_h1:
@@ -148,7 +156,12 @@ def fetch_job_posting(url: str, timeout: int = 12) -> JobPosting:
 
     parser = _TextExtractor()
     parser.feed(html)
-    text = normalize_text("".join(parser.parts))
+    full_text = normalize_text("".join(parser.parts))
+    main_text = normalize_text("".join(parser.main_parts))
+    # Navigation, related jobs, and legal footers can contain many unrelated
+    # keywords. Prefer semantic <main> content when it is substantial, while
+    # retaining a full-page fallback for small or non-semantic pages.
+    text = main_text if len(main_text) >= 180 else full_text
     title = normalize_text(parser.meta.get("og:title", "") or parser.job_heading or parser.title or parser.h1) or "Untitled job posting"
     company = (
         normalize_text(parser.meta.get("og:site_name", ""))

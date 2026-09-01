@@ -55,3 +55,23 @@ class JobParserTests(unittest.TestCase):
         finally:
             path.unlink(missing_ok=True)
         self.assertEqual(posting.title, "Operations Intern")
+
+    def test_prefers_semantic_main_content_over_footer_keywords(self):
+        html = """
+        <html><body>
+        <main><h1>Finance Intern</h1>
+        <p>Support variance analysis, reconciliation, and monthly reporting for the finance team.</p>
+        <p>Use Excel to investigate discrepancies and document the result for stakeholders.</p>
+        </main>
+        <footer>Unrelated robotics software engineering jobs, Japanese and Chinese language roles.</footer>
+        </body></html>
+        """
+        with NamedTemporaryFile(mode="w", suffix=".html", delete=False) as file:
+            file.write(html)
+            path = Path(file.name)
+        try:
+            posting = fetch_job_posting(path.as_uri())
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertIn("variance analysis", posting.text)
+        self.assertNotIn("robotics software engineering", posting.text)
