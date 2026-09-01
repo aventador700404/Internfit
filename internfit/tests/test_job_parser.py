@@ -75,3 +75,23 @@ class JobParserTests(unittest.TestCase):
             path.unlink(missing_ok=True)
         self.assertIn("variance analysis", posting.text)
         self.assertNotIn("robotics software engineering", posting.text)
+
+    def test_application_form_uses_full_text_when_main_is_only_form_controls(self):
+        html = """
+        <html><head><title>Job Application for Intern, Chinese Speaking at Example</title></head>
+        <body>
+        <main><h1>Job Application for Intern, Chinese Speaking at Example</h1>
+        <p>Requirements</p><form><label>First name</label><label>Last name</label>
+        <label>Upload resume</label><label>Submit application</label></form></main>
+        <section><h2>Qualifications</h2><p>Fluent Mandarin Chinese is required for this role.</p>
+        <p>Support research and stakeholder coordination.</p></section>
+        </body></html>
+        """
+        with NamedTemporaryFile(mode="w", suffix=".html", delete=False) as file:
+            file.write(html)
+            path = Path(file.name)
+        try:
+            posting = fetch_job_posting(path.as_uri())
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertIn("Fluent Mandarin Chinese", posting.text)

@@ -158,6 +158,9 @@ def fetch_job_posting(url: str, timeout: int = 12) -> JobPosting:
     parser.feed(html)
     full_text = normalize_text("".join(parser.parts))
     main_text = normalize_text("".join(parser.main_parts))
+    title = normalize_text(
+        parser.meta.get("og:title", "") or parser.job_heading or parser.title or parser.h1
+    ) or "Untitled job posting"
     # Navigation, related jobs, and legal footers can contain many unrelated
     # keywords. Prefer semantic <main> content when it is substantial and
     # actually looks like a job description. Application-form pages sometimes
@@ -174,9 +177,19 @@ def fetch_job_posting(url: str, timeout: int = 12) -> JobPosting:
         "job responsibilities",
         "profile",
     )
-    use_main = len(main_text) >= 180 and any(marker in main_text.casefold() for marker in main_markers)
+    parsed_path = urlparse(url).path.casefold()
+    title_lower = title.casefold()
+    is_application_form = (
+        "/embed/job_app" in parsed_path
+        or title_lower.startswith("job application for")
+        or "application form" in title_lower
+    )
+    use_main = (
+        not is_application_form
+        and len(main_text) >= 180
+        and any(marker in main_text.casefold() for marker in main_markers)
+    )
     text = main_text if use_main else full_text
-    title = normalize_text(parser.meta.get("og:title", "") or parser.job_heading or parser.title or parser.h1) or "Untitled job posting"
     company = (
         normalize_text(parser.meta.get("og:site_name", ""))
         or _company_from_title(title)
