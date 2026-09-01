@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InternFit — Application Prioritizer</title>
+    <style>
+      :root {
+        --ink: #13251d;
+        --muted: #6f7b74;
+        --line: #dde5de;
+        --paper: #f7f8f4;
+        --card: #ffffff;
+        --accent: #b7f36b;
+        --accent-deep: #2f6e41;
+        --soft-green: #eef8e8;
+        --soft-orange: #fff1df;
+        --orange: #c97920;
+        --shadow: 0 18px 50px rgba(33, 58, 42, 0.08);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--paper);
+      }
+      .shell { max-width: 1180px; margin: 0 auto; padding: 28px 28px 54px; }
+      .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 38px; }
+      .brand { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 800; letter-spacing: -0.7px; }
+      .mark { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 10px; background: var(--ink); color: var(--accent); font-size: 18px; }
+      .status { color: var(--accent-deep); background: var(--soft-green); padding: 8px 12px; border-radius: 99px; font-size: 12px; font-weight: 700; }
+      .hero { display: grid; grid-template-columns: 1.15fr .85fr; gap: 46px; align-items: end; margin-bottom: 36px; }
+      h1 { margin: 0 0 14px; font-size: clamp(36px, 5vw, 61px); line-height: .98; letter-spacing: -3.3px; max-width: 680px; }
+      .hero p { max-width: 590px; margin: 0; color: var(--muted); font-size: 17px; line-height: 1.55; }
+      .hero-note { border-left: 2px solid var(--accent-deep); padding-left: 17px; color: var(--muted); font-size: 14px; line-height: 1.55; }
+      .hero-note strong { color: var(--ink); display: block; margin-bottom: 3px; }
+      .workspace { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+      .panel { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 26px; box-shadow: 0 2px 0 rgba(0,0,0,.01); }
+      .panel-label { display: flex; align-items: center; gap: 9px; margin-bottom: 20px; color: var(--muted); font-size: 13px; font-weight: 750; text-transform: uppercase; letter-spacing: .08em; }
+      .number { display: grid; place-items: center; width: 24px; height: 24px; color: var(--card); background: var(--ink); border-radius: 50%; font-size: 12px; }
+      .dropzone { display: flex; min-height: 202px; align-items: center; justify-content: center; text-align: center; border: 1.5px dashed #bbcabd; border-radius: 15px; background: #fbfcfa; cursor: pointer; transition: .2s ease; }
+      .dropzone:hover, .dropzone.dragging { border-color: var(--accent-deep); background: var(--soft-green); transform: translateY(-1px); }
+      .dropzone input { display: none; }
+      .upload-icon { width: 44px; height: 44px; margin: 0 auto 10px; display: grid; place-items: center; border-radius: 13px; background: var(--soft-green); color: var(--accent-deep); font-size: 22px; }
+      .upload-title { font-size: 15px; font-weight: 750; }
+      .upload-sub { margin-top: 5px; color: var(--muted); font-size: 13px; }
+      .file-ready { display: none; padding: 15px; background: var(--soft-green); border-radius: 12px; margin-top: 13px; }
+      .file-ready.active { display: flex; align-items: center; gap: 11px; }
+      .file-dot { width: 11px; height: 11px; border-radius: 50%; background: var(--accent-deep); }
+      .file-name { font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .file-state { margin-left: auto; color: var(--accent-deep); font-size: 12px; font-weight: 700; }
+      label { display: block; margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 700; }
+      input[type="url"] { width: 100%; padding: 15px 14px; border: 1px solid var(--line); outline: none; border-radius: 12px; color: var(--ink); font: inherit; transition: border .2s; }
+      input[type="url"]:focus { border-color: var(--accent-deep); box-shadow: 0 0 0 3px rgba(183,243,107,.24); }
+      .source-preview { display: flex; gap: 11px; align-items: flex-start; min-height: 70px; margin: 15px 0 19px; padding: 14px; border-radius: 12px; background: #f4f7f3; }
+      .source-logo { width: 36px; height: 36px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 10px; color: white; background: #0b7e64; font-weight: 900; }
+      .source-role { font-size: 14px; font-weight: 760; line-height: 1.25; }
+      .source-meta { margin-top: 4px; color: var(--muted); font-size: 12px; }
+      .job-fallback { display: none; margin: 14px 0 18px; padding: 14px; border-radius: 12px; background: var(--soft-orange); }
+      .job-fallback.active { display: block; }
+      .job-fallback label { color: #8a5a24; margin-bottom: 8px; }
+      .job-fallback textarea { width: 100%; min-height: 132px; resize: vertical; padding: 11px 12px; border: 1px solid #edcfaa; outline: none; border-radius: 10px; color: var(--ink); background: #fffaf3; font: inherit; font-size: 13px; line-height: 1.45; }
+      .job-fallback textarea:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(201,121,32,.14); }
+      .fallback-hint { margin-top: 7px; color: #986a37; font-size: 11px; line-height: 1.4; }
+      .button { width: 100%; border: 0; border-radius: 12px; padding: 15px 18px; cursor: pointer; color: #17301e; background: var(--accent); font: inherit; font-weight: 800; transition: transform .2s, box-shadow .2s; }
+      .button:hover { transform: translateY(-1px); box-shadow: 0 10px 20px rgba(101, 169, 55, .18); }
+      .button:disabled { cursor: wait; opacity: .65; transform: none; box-shadow: none; }
+      .analysis-status { min-height: 18px; margin: 11px 2px 0; color: var(--muted); font-size: 12px; }
+      .result { display: none; grid-column: 1 / -1; padding: 30px; background: var(--ink); color: white; border-radius: 20px; box-shadow: var(--shadow); animation: reveal .45s ease both; }
+      .result.active { display: grid; grid-template-columns: 200px 1fr; gap: 36px; }
+      @keyframes reveal { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+      .score-wrap { display: grid; place-items: center; align-content: center; min-height: 180px; border-radius: 18px; background: #1d3628; }
+      .score { font-size: 61px; line-height: .9; font-weight: 850; letter-spacing: -4px; color: var(--accent); }
+      .score small { color: #aebdb2; font-size: 17px; letter-spacing: -1px; }
+      .score-label { margin-top: 8px; font-size: 12px; color: #d7e0d9; font-weight: 750; text-transform: uppercase; letter-spacing: .09em; }
+      .result-top { display: flex; justify-content: space-between; gap: 15px; align-items: start; }
+      .result h2 { margin: 0; font-size: 23px; letter-spacing: -.8px; }
+      .result p { margin: 6px 0 0; color: #b8c8bd; font-size: 14px; }
+      .pill { padding: 8px 11px; border-radius: 99px; color: #1d3628; background: var(--accent); font-size: 12px; font-weight: 800; white-space: nowrap; }
+      .apply-link { text-decoration: none; transition: transform .2s, box-shadow .2s; }
+      .apply-link:hover { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(183,243,107,.22); }
+      .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-top: 22px; }
+      .metric { padding: 13px; border-radius: 12px; background: #1d3628; }
+      .metric span { display: block; color: #aebdb2; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; }
+      .metric strong { display: block; margin-top: 5px; font-size: 15px; }
+      .evidence { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+      .evidence-box { padding: 14px; border-radius: 12px; background: #1d3628; }
+      .evidence-box h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: #aebdb2; }
+      .evidence-box ul { padding: 0; margin: 0; list-style: none; }
+      .evidence-box li { padding: 7px 0; border-top: 1px solid rgba(255,255,255,.08); font-size: 13px; line-height: 1.35; }
+      .evidence-box li:first-child { border: 0; padding-top: 0; }
+      .positive::before { content: "✓"; color: var(--accent); margin-right: 7px; font-weight: 900; }
+      .gap::before { content: "→"; color: #ffcb82; margin-right: 7px; font-weight: 900; }
+      .footnote { margin: 21px 0 0; color: var(--muted); font-size: 12px; }
+      @media (max-width: 780px) {
+        .shell { padding: 20px 16px 38px; }
+        .hero, .workspace, .result.active, .evidence { grid-template-columns: 1fr; }
+        .hero { gap: 20px; }
+        h1 { letter-spacing: -2.4px; }
+        .result { padding: 18px; }
+        .score-wrap { min-height: 130px; }
+        .metrics { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <nav class="nav">
+        <div class="brand"><span class="mark">↗</span> InternFit</div>
+        <div class="status">Evidence-based beta</div>
+      </nav>
+
+      <section class="hero">
+        <div>
+          <h1>Know where to apply<br />before you apply.</h1>
+          <p>Upload your CV once. Add a job-posting link. InternFit explains your fit, flags eligibility risks, and shows what your CV needs for that role.</p>
+        </div>
+        <div class="hero-note"><strong>Not a company ATS simulator.</strong>It is a transparent decision tool for ranking your own applications with evidence from your CV.</div>
+      </section>
+
+      <section class="workspace">
+        <article class="panel">
+          <div class="panel-label"><span class="number">1</span> Candidate profile</div>
+          <label class="dropzone" id="dropzone" for="cv-upload">
+            <input id="cv-upload" type="file" accept=".docx" />
+            <div>
+              <div class="upload-icon">↑</div>
+              <div class="upload-title">Drop your CV here</div>
+              <div class="upload-sub">or choose a .docx file</div>
+            </div>
+          </label>
+          <div class="file-ready" id="file-ready"><span class="file-dot"></span><span class="file-name" id="file-name">CV uploaded</span><span class="file-state">Ready</span></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-label"><span class="number">2</span> Job posting</div>
+          <label for="job-url">Public job-posting link</label>
+          <input id="job-url" type="url" value="https://jobs.sap.com/job/Seoul-Strategy-&amp;-Operations-Intern,-SAP-Labs-East-Asia-Korea-06578/1427409933/" />
+          <div class="source-preview">
+            <div class="source-logo">S</div>
+            <div><div class="source-role">Strategy &amp; Operations Intern</div><div class="source-meta">SAP Labs East Asia Korea · Seoul</div></div>
+          </div>
+          <div class="job-fallback" id="job-fallback">
+            <label for="job-text">Paste the job description</label>
+            <textarea id="job-text" rows="7" placeholder="Copy the responsibilities and qualifications from the posting here…"></textarea>
+            <div class="fallback-hint">The original link will still be kept for Apply now.</div>
+          </div>
+          <button class="button" id="analyze">Analyze fit <span aria-hidden="true">→</span></button>
+          <p class="analysis-status" id="analysis-status" role="status" aria-live="polite"></p>
+        </article>
+
+        <section class="result" id="result" aria-live="polite">
+          <div class="score-wrap"><div><div class="score"><span id="score-number">—</span><small>/100</small></div><div class="score-label" id="score-label">Run an analysis to see your fit</div></div></div>
+          <div>
+            <div class="result-top"><div><h2 id="job-title-result">Job fit result</h2><p id="job-meta">—</p></div><a class="pill apply-link" id="apply-link" href="#" target="_blank" rel="noopener noreferrer">Apply now ↗</a></div>
+            <div class="metrics"><div class="metric"><span>Eligibility</span><strong id="eligibility-value">—</strong></div><div class="metric"><span>Best evidence</span><strong id="best-evidence-value">—</strong></div><div class="metric"><span>CV edits</span><strong id="cv-edits-value">—</strong></div></div>
+            <div class="evidence">
+              <div class="evidence-box"><h3>Why it matches</h3><ul id="strengths-list"></ul></div>
+              <div class="evidence-box"><h3>Make the CV sharper</h3><ul id="gaps-list"></ul></div>
+            </div>
+          </div>
+        </section>
+      </section>
+      <p class="footnote">CV parser connected · public-link extraction active for readable pages.</p>
+    </main>
+    <script>
+      const upload = document.querySelector('#cv-upload');
+      const dropzone = document.querySelector('#dropzone');
+      const fileReady = document.querySelector('#file-ready');
+      const fileName = document.querySelector('#file-name');
+      const result = document.querySelector('#result');
+      const analyzeButton = document.querySelector('#analyze');
+      const status = document.querySelector('#analysis-status');
+      const fallback = document.querySelector('#job-fallback');
+      const jobTextInput = document.querySelector('#job-text');
+      const scoreNumber = document.querySelector('#score-number');
+      const scoreLabel = document.querySelector('#score-label');
+      const jobTitleResult = document.querySelector('#job-title-result');
+      const jobMeta = document.querySelector('#job-meta');
+      const applyLink = document.querySelector('#apply-link');
+      const eligibilityValue = document.querySelector('#eligibility-value');
+      const bestEvidenceValue = document.querySelector('#best-evidence-value');
+      const cvEditsValue = document.querySelector('#cv-edits-value');
+      const strengthsList = document.querySelector('#strengths-list');
+      const gapsList = document.querySelector('#gaps-list');
+      let selectedFile = null;
+      const setFile = file => {
+        if (!file) return;
+        selectedFile = file;
+        fileName.textContent = file.name;
+        fileReady.classList.add('active');
+        status.textContent = '';
+      };
+      upload.addEventListener('change', event => setFile(event.target.files[0]));
+      ['dragenter', 'dragover'].forEach(type => dropzone.addEventListener(type, event => { event.preventDefault(); dropzone.classList.add('dragging'); }));
+      ['dragleave', 'drop'].forEach(type => dropzone.addEventListener(type, event => { event.preventDefault(); dropzone.classList.remove('dragging'); }));
+      dropzone.addEventListener('drop', event => setFile(event.dataTransfer.files[0]));
+      const renderList = (element, items, className, emptyMessage) => {
+        element.replaceChildren();
+        const values = Array.isArray(items) && items.length ? items : [emptyMessage];
+        values.forEach(value => {
+          const item = document.createElement('li');
+          item.className = className;
+          item.textContent = String(value).replaceAll('_', ' ');
+          element.append(item);
+        });
+      };
+      analyzeButton.addEventListener('click', async () => {
+        if (!selectedFile) {
+          status.textContent = 'Upload a .docx CV first.';
+          return;
+        }
+        const inputUrl = document.querySelector('#job-url').value.trim();
+        if (!inputUrl) {
+          status.textContent = 'Add a public job-posting URL first.';
+          return;
+        }
+        status.textContent = 'Reading the CV and job posting…';
+        analyzeButton.disabled = true;
+        analyzeButton.textContent = 'Analyzing…';
+        try {
+          const form = new FormData();
+          form.append('cv', selectedFile, selectedFile.name);
+          form.append('job_url', inputUrl);
+          const jobText = jobTextInput.value.trim();
+          if (jobText) form.append('job_text', jobText);
+          const response = await fetch('/api/analyze', { method: 'POST', body: form });
+          const data = await response.json();
+          if (!response.ok) {
+            if (data.fallback_required) {
+              fallback.classList.add('active');
+              result.classList.remove('active');
+              status.textContent = '링크를 못 읽었노. 아래 공고 내용을 붙여넣고 다시 눌러라.';
+              jobTextInput.focus();
+              return;
+            }
+            throw new Error(data.error || 'The analysis could not be completed.');
+          }
+          scoreNumber.textContent = data.score;
+          scoreLabel.textContent = `${data.recommendation} · Grade ${data.grade}`;
+          jobTitleResult.textContent = data.job_title || 'Job fit result';
+          const sourceLabel = data.analysis_source === 'pasted_text_fallback' ? 'Pasted job description' : inputUrl;
+          jobMeta.textContent = `${data.company || 'Unknown company'} · ${sourceLabel}`;
+          applyLink.href = data.apply_url || inputUrl;
+          eligibilityValue.textContent = data.eligibility || '—';
+          bestEvidenceValue.textContent = data.strengths?.[0]?.replaceAll('_', ' ') || '—';
+          const gaps = Array.isArray(data.gaps) ? data.gaps : [];
+          cvEditsValue.textContent = `${gaps.length} suggestion${gaps.length === 1 ? '' : 's'}`;
+          renderList(strengthsList, data.evidence?.length ? data.evidence : data.strengths, 'positive', 'No direct evidence matched.');
+          renderList(gapsList, gaps, 'gap', 'No obvious CV gaps found.');
+          status.textContent = 'Analysis complete.';
+          result.classList.remove('active');
+          void result.offsetWidth;
+          result.classList.add('active');
+          result.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } catch (error) {
+          status.textContent = error instanceof Error ? error.message : 'The analysis could not be completed.';
+        } finally {
+          analyzeButton.disabled = false;
+          analyzeButton.innerHTML = 'Analyze fit <span aria-hidden="true">→</span>';
+        }
+      });
+    </script>
+  </body>
+</html>

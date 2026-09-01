@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: internfit
+    runtime: python
+    region: singapore
+    plan: free
+    buildCommand: pip install -r internfit_web/requirements.txt
+    startCommand: python internfit_web/server.py
+    healthCheckPath: /health

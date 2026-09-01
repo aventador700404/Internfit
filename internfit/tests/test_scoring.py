@@ -1,0 +1,44 @@
+import unittest
+
+from core.cv_parser import CandidateProfile
+from core.sample_jobs import SAMPLE_JOBS
+from core.scoring import assess_fit
+
+
+class FitScoringTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.candidate = CandidateProfile(
+            source_name="test_candidate.docx",
+            raw_text="B.B.A Candidate. English C1. Excel PowerPoint Generative AI.",
+            evidence={
+                "strategy": ["Strategy project"],
+                "research": ["Market research"],
+                "operations": ["Operations coordination"],
+                "stakeholder": ["Stakeholder communication"],
+                "data_analysis": ["Data analysis"],
+                "technology": ["Technology project"],
+                "finance": ["M&A research"],
+                "event_management": ["Event planning"],
+            },
+            languages={"korean", "english", "german"},
+            tools={"excel", "powerpoint", "word", "ai_tools"},
+            graduation="B.B.A. Candidate, Feb 2027",
+            education=["Sungkyunkwan University"],
+        )
+
+    def test_sap_is_highest_fit(self):
+        sap = assess_fit(self.candidate, SAMPLE_JOBS["SAP — Strategy & Operations Intern (high-fit expected)"])
+        ing = assess_fit(self.candidate, SAMPLE_JOBS["ING — Debt Capital Markets Intern (mid-fit expected)"])
+        self.assertGreater(sap.score, ing.score)
+        self.assertEqual(sap.eligibility, "Pass")
+        self.assertEqual(ing.recommendation, "Apply after targeted CV edits")
+
+    def test_japanese_requirement_is_a_blocker(self):
+        result = assess_fit(self.candidate, SAMPLE_JOBS["RLWRLD — AI & Robotics Strategy Intern, Japanese (eligibility fail expected)"])
+        self.assertEqual(result.eligibility, "Risk")
+        self.assertLessEqual(result.score, 55)
+
+
+if __name__ == "__main__":
+    unittest.main()
