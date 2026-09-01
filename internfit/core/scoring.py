@@ -16,7 +16,17 @@ TAG_PATTERNS = {
     "data_analysis": ("data analysis", "data analytics", "quantitative", "analytics", "dashboard", "analyze data"),
     "technology": ("technology", "digital", "ai", "robotics", "systems", "deep tech"),
     "finance": ("finance", "financial", "capital markets", "bond", "debt", "investment"),
-    "event_management": ("event", "workshop", "training", "logistics", "coordination"),
+    "event_management": (
+        "event planning",
+        "event management",
+        "event coordination",
+        "event logistics",
+        "organize events",
+        "organise events",
+        "workshop planning",
+        "workshop coordination",
+        "training coordination",
+    ),
     "marketing": ("marketing", "social media", "campaign", "influencer", "content strategy", "brand"),
     "sales": ("business development", "lead generation", "account management", "sales growth", "sales target"),
     "software_engineering": ("software engineer", "software engineering", "backend", "frontend", "api", "programming language", "programming project", "developer", "coding"),
@@ -199,7 +209,15 @@ class FitResult:
 
 def _present_tags(text: str, patterns: dict[str, tuple[str, ...]]) -> set[str]:
     lowered = text.lower()
-    return {tag for tag, words in patterns.items() if any(_contains_term(lowered, word) for word in words)}
+    tags = {tag for tag, words in patterns.items() if any(_contains_term(lowered, word) for word in words)}
+    # A career-page footer often mentions "events" or a "speaker series".
+    # Count event management only when an action is tied to the event itself.
+    if re.search(
+        r"\b(?:coordinate|coordinates|coordinating|manage|manages|managing|plan|plans|planning|organize|organise|deliver|delivers|own|owns)\w*\s+(?:[a-z]+\s+){0,2}events?\b",
+        lowered,
+    ):
+        tags.add("event_management")
+    return tags
 
 
 def _contains_term(text: str, term: str) -> bool:
@@ -354,12 +372,12 @@ def _grade(score: int) -> str:
     return "C"
 
 
-def _recommendation(score: int, blockers: Iterable[str]) -> str:
+def _recommendation(score: int, blockers: Iterable[str], penalty_points: int = 0) -> str:
     if blockers:
         return "Hold — eligibility gap"
     if score >= 85:
         return "Apply now"
-    if score >= 50:
+    if score >= 65 or (score >= 50 and penalty_points <= 8):
         return "Apply after targeted CV edits"
     return "Lower priority"
 
@@ -372,7 +390,14 @@ def _shorten(text: str, limit: int = 175) -> str:
     return shortened.rstrip(" ,;:") + "..."
 
 
-def _line_quality(line: str) -> tuple[int, int, int]:
+STOPWORDS = {
+    "about", "after", "also", "and", "are", "been", "being", "from", "have", "into", "more",
+    "that", "their", "this", "through", "with", "will", "your", "role", "work", "what", "where",
+    "which", "such", "than", "then", "they", "them", "those", "these", "using", "including",
+}
+
+
+def _line_quality(line: str, job_words: set[str] | None = None) -> tuple[int, int, int, int]:
     clean = _normalise_line(line)
     lowered = clean.casefold()
     action_words = (
@@ -381,27 +406,35 @@ def _line_quality(line: str) -> tuple[int, int, int]:
     )
     action_score = sum(1 for word in action_words if _contains_term(lowered, word))
     number_score = 1 if re.search(r"\d", clean) else 0
-    return (0 if _is_metadata_line(clean) else 1, action_score + number_score, len(clean))
+    line_words = set(re.findall(r"[a-z]{4,}", lowered)) - STOPWORDS
+    overlap = len(line_words & (job_words or set()))
+    return (0 if _is_metadata_line(clean) else 1, overlap, action_score + number_score, len(clean))
 
 
-def _best_evidence_line(candidate: CandidateProfile, tag: str, used: set[str] | None = None) -> str | None:
+def _best_evidence_line(
+    candidate: CandidateProfile,
+    tag: str,
+    used: set[str] | None = None,
+    job_text: str = "",
+) -> str | None:
     lines = _unique_lines(candidate.evidence.get(tag, []))
     used = used or set()
     available = [line for line in lines if line.casefold() not in used]
     if not available:
         return None
-    return max(available, key=_line_quality)
+    job_words = set(re.findall(r"[a-z]{4,}", job_text.casefold())) - STOPWORDS
+    return max(available, key=lambda line: _line_quality(line, job_words))
 
 
 def _ordered_tags(tags: set[str], candidate: CandidateProfile) -> list[str]:
     return sorted(tags, key=lambda tag: (-_candidate_tag_strength(candidate, tag), TAG_LABELS.get(tag, tag)))
 
 
-def _build_explanations(candidate: CandidateProfile, strengths: set[str]) -> list[str]:
+def _build_explanations(candidate: CandidateProfile, strengths: set[str], job_text: str) -> list[str]:
     explanations: list[str] = []
     used: set[str] = set()
     for tag in _ordered_tags(strengths, candidate):
-        line = _best_evidence_line(candidate, tag, used)
+        line = _best_evidence_line(candidate, tag, used, job_text)
         if not line:
             continue
         used.add(line.casefold())
@@ -415,11 +448,11 @@ def _build_explanations(candidate: CandidateProfile, strengths: set[str]) -> lis
     return explanations
 
 
-def _build_evidence(candidate: CandidateProfile, strengths: set[str]) -> list[str]:
+def _build_evidence(candidate: CandidateProfile, strengths: set[str], job_text: str) -> list[str]:
     evidence: list[str] = []
     used: set[str] = set()
     for tag in _ordered_tags(strengths, candidate):
-        line = _best_evidence_line(candidate, tag, used)
+        line = _best_evidence_line(candidate, tag, used, job_text)
         if not line:
             continue
         used.add(line.casefold())
@@ -556,14 +589,14 @@ def assess_fit(candidate: CandidateProfile, job: JobPosting) -> FitResult:
     return FitResult(
         score=score,
         grade=_grade(score),
-        recommendation=_recommendation(score, blockers),
+        recommendation=_recommendation(score, blockers, penalty_points),
         eligibility="Risk" if blockers else "Pass",
         blockers=blockers,
         strengths=strength_list,
         gaps=gaps,
         breakdown=breakdown,
-        evidence=_build_evidence(candidate, strengths_set),
-        match_explanations=_build_explanations(candidate, strengths_set),
+        evidence=_build_evidence(candidate, strengths_set, text),
+        match_explanations=_build_explanations(candidate, strengths_set, text),
         gap_details=_build_gap_details(gap_tags, core_checks - passed_checks, blockers),
         penalty_points=penalty_points,
         penalty_reasons=penalty_reasons,
