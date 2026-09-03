@@ -3,7 +3,7 @@ import unittest
 from core.cv_parser import CandidateProfile, _profile_from_lines
 from core.sample_jobs import SAMPLE_JOBS
 from core.job_parser import JobPosting
-from core.scoring import _domain_score_cap, assess_fit
+from core.scoring import _decision, _domain_score_cap, assess_fit
 
 
 class FitScoringTests(unittest.TestCase):
@@ -149,6 +149,41 @@ class FitScoringTests(unittest.TestCase):
         )
         result = assess_fit(candidate, job)
         self.assertNotIn("Required graduate technical degree missing", result.blockers)
+
+    def test_preferred_alignment_is_small_and_does_not_create_a_gap(self):
+        job = JobPosting(
+            title="Strategy Intern",
+            company="Example",
+            url="",
+            text=(
+                "Responsibilities\nSupport strategy planning and market research.\n"
+                "Preferred Qualifications\nChinese, Excel, and financial modeling experience."
+            ),
+        )
+        without_preferred = assess_fit(self.candidate, job)
+        with_preferred = CandidateProfile(
+            **{
+                **self.candidate.__dict__,
+                "languages": self.candidate.languages | {"chinese"},
+            }
+        )
+        with_preferred_result = assess_fit(with_preferred, job)
+
+        self.assertGreater(with_preferred_result.score, without_preferred.score)
+        self.assertLessEqual(
+            with_preferred_result.score - without_preferred.score,
+            5,
+        )
+        self.assertLessEqual(with_preferred_result.breakdown["Preferred alignment"], 5)
+        self.assertNotIn("robotics_data", without_preferred.gaps)
+        self.assertNotIn("financial_modeling", without_preferred.gaps)
+
+    def test_decision_bands_are_separate_from_hard_eligibility(self):
+        self.assertEqual(_decision(90, []), "Apply now")
+        self.assertEqual(_decision(70, []), "Apply after CV edits")
+        self.assertEqual(_decision(50, []), "Low probability")
+        self.assertEqual(_decision(39, []), "Skip")
+        self.assertEqual(_decision(95, ["Required language missing: Chinese"]), "Skip")
 
 
 if __name__ == "__main__":
