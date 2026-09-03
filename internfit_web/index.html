@@ -164,7 +164,7 @@
           <div class="score-wrap"><div><div class="score"><span id="score-number">—</span><small>/100</small></div><div class="score-label" id="score-label">Run an analysis to see your fit</div></div></div>
           <div>
             <div class="result-top"><div><h2 id="job-title-result">Job fit result</h2><p id="job-meta">—</p></div><a class="pill apply-link" id="apply-link" href="#" target="_blank" rel="noopener noreferrer">Apply now ↗</a></div>
-            <div class="metrics"><div class="metric"><span>Eligibility</span><strong id="eligibility-value">—</strong></div><div class="metric"><span>Best evidence</span><strong id="best-evidence-value">—</strong></div><div class="metric"><span>CV edits</span><strong id="cv-edits-value">—</strong></div></div>
+            <div class="metrics"><div class="metric"><span>Decision</span><strong id="eligibility-value">—</strong></div><div class="metric"><span>Best evidence</span><strong id="best-evidence-value">—</strong></div><div class="metric"><span>CV edits</span><strong id="cv-edits-value">—</strong></div></div>
             <div class="evidence">
               <div class="evidence-box"><h3>Why it matches</h3><ul id="strengths-list"></ul></div>
               <div class="evidence-box"><h3>Make the CV sharper</h3><ul id="gaps-list"></ul></div>
@@ -314,7 +314,7 @@
         jobMeta.textContent = `${company} · ${sourceLabel}`;
         updateSourcePreview(inputUrl, data.job_title || 'Public job posting', company);
         applyLink.href = data.apply_url || inputUrl;
-        eligibilityValue.textContent = data.eligibility || '—';
+        eligibilityValue.textContent = data.decision || data.recommendation || data.eligibility || '—';
         bestEvidenceValue.textContent = data.strengths?.[0]?.replaceAll('_', ' ') || '—';
         const gaps = Array.isArray(data.gap_details) && data.gap_details.length
           ? data.gap_details
