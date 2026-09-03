@@ -296,7 +296,7 @@ def _run_tesseract(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
-            timeout=20,
+            timeout=10,
         )
     except subprocess.TimeoutExpired:
         print(
@@ -327,9 +327,11 @@ def _extract_pdf_with_ocr(data: bytes) -> str:
     """OCR image-only PDFs with Korean/English fallback passes.
 
     Pages are rendered and piped directly to Tesseract; no uploaded PDF or
-    rendered page is persisted. Several layout and contrast passes are used
-    because resumes often contain two columns, colored sidebars, or outlined
-    text rather than a selectable text layer.
+    rendered page is persisted. A small number of layout and contrast passes
+    are used because resumes often contain two columns, colored sidebars, or
+    outlined text rather than a selectable text layer. The pass count is
+    deliberately bounded so a free web instance does not spend minutes on
+    one upload.
     """
     if fitz is None:
         return ""
@@ -343,45 +345,48 @@ def _extract_pdf_with_ocr(data: bytes) -> str:
         document = fitz.open(stream=data, filetype="pdf")
         page_text: list[str] = []
         for page_number, page in enumerate(document, start=1):
-            # 3x renders approximately 216 DPI for an A4 PDF and retains
-            # small Korean body text better than the previous 2x pass.
-            pixmap = page.get_pixmap(matrix=fitz.Matrix(3, 3), alpha=False)
+            # Keep the previous 2x size for predictable latency on the free
+            # instance; the contrast pass handles the problematic sidebar.
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
             variants = dict(_ocr_png_variants(pixmap))
             primary = languages[0]
             attempts = (
                 ("original", "3"),
-                ("gray", "11"),
-                ("binary", "6"),
+                ("binary", "11"),
             )
-            candidates: list[str] = []
+            best_page = ""
             for variant, psm in attempts:
                 image_bytes = variants.get(variant, variants["original"])
                 text = _run_tesseract(
                     executable, image_bytes, primary, psm, page_number, variant
                 )
-                if text.strip():
-                    candidates.append(text)
+                if _pdf_text_quality(text) > _pdf_text_quality(best_page):
+                    best_page = text
+                if _pdf_text_is_usable(best_page):
+                    break
 
-            best_page = max(candidates, key=_pdf_text_quality, default="")
             # If the combined Korean+English model fails or returns no useful
             # text, try the individual installed language models as a safety
-            # net. English-only text is still preferable to rejecting a CV.
+            # net. Keep this to one final attempt to bound request latency;
+            # English-only text is still preferable to rejecting a CV.
             if not _pdf_text_is_usable(best_page):
-                for language in languages[1:]:
-                    for variant, psm in (("binary", "11"), ("original", "6")):
-                        image_bytes = variants.get(variant, variants["original"])
-                        text = _run_tesseract(
-                            executable, image_bytes, language, psm, page_number, variant
-                        )
-                        if text.strip():
-                            candidates.append(text)
-                best_page = max(candidates, key=_pdf_text_quality, default="")
+                fallback = next(
+                    (language for language in ("eng", "kor") if language in languages[1:]),
+                    None,
+                )
+                if fallback:
+                    image_bytes = variants.get("binary", variants["original"])
+                    fallback_text = _run_tesseract(
+                        executable, image_bytes, fallback, "11", page_number, "binary"
+                    )
+                    if _pdf_text_quality(fallback_text) > _pdf_text_quality(best_page):
+                        best_page = fallback_text
 
             if best_page.strip():
                 page_text.append(best_page)
         document.close()
         return "\n".join(page_text)
-    except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+    except Exception as exc:
         print(f"[InternFit] OCR document error type={type(exc).__name__}", flush=True)
         return ""
 
@@ -418,3 +423,38 @@ def parse_cv(file_path: str | Path) -> CandidateProfile:
 
 def parse_cv_bytes(data: bytes, source_name: str = "uploaded_cv.docx") -> CandidateProfile:
     return _profile_from_lines(extract_docx_bytes(data), source_name)
+
+
+def _profile_from_lines(lines: list[str], source_name: str) -> CandidateProfile:
+    raw_text = "\n".join(lines)
+    evidence = {tag: _matching_lines(lines, needles) for tag, needles in EVIDENCE_RULES.items()}
+    languages = {
+        language
+        for language, needles in LANGUAGE_RULES.items()
+        if any(_contains_term(raw_text, needle) for needle in needles)
+    }
+    tools = {
+        tool
+        for tool, needles in TOOL_RULES.items()
+        if any(_contains_term(raw_text, needle) for needle in needles)
+    }
+    graduation_patterns = (
+        r"\b(?:bachelor|master|ph\.?d|undergraduate|graduate)\s+(?:student|candidate)\b",
+        r"\b(?:candidate|student)\b.*(?:\b20\d{2}\b|\buniversity\b|\bcollege\b)",
+        r"\b(?:expected|anticipated)\s+(?:graduation|completion|to graduate)\b",
+        r"\bclass of\s+20\d{2}\b",
+        r"(?:졸업예정|재학)",
+    )
+    graduation = next(
+        (
+            line
+            for line in lines
+            if any(re.search(pattern, line, flags=re.IGNORECASE) for pattern in graduation_patterns)
+        ),
+        None,
+    )
+    education = [
+        line
+        for line in lines
+        if re.search(r"\b(?:university|college|school|institute)\b", line, flags=re.IGNORECASE)
+        or re.search(r"(?:대학교|대학|재학|학사|석사|박사|경영학|경제학|무역학|국제통상)", line)
