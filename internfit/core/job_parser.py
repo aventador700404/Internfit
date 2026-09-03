@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 
 IGNORED_TAGS = {"script", "style", "noscript", "template", "svg", "canvas"}
+MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 
 # Career pages frequently place the actual role beside company marketing,
 # related jobs, and legal copy. These headings are useful across career-site
@@ -38,6 +39,23 @@ JOB_CONTENT_HEADINGS = (
     "requirements",
     "qualifications",
     "skills",
+    "주요업무",
+    "담당업무",
+    "수행업무",
+    "업무내용",
+    "모집분야",
+    "모집부문",
+    "직무내용",
+    "자격요건",
+    "지원자격",
+    "필수요건",
+    "필수자격",
+    "자격조건",
+    "요구사항",
+    "기본요건",
+    "우대사항",
+    "우대조건",
+    "우대요건",
 )
 
 JOB_FOOTER_HEADINGS = (
@@ -57,6 +75,20 @@ JOB_FOOTER_HEADINGS = (
     "accessibility",
     "share this job",
     "apply now",
+    "전형절차",
+    "채용절차",
+    "채용전형",
+    "근무조건",
+    "근무환경",
+    "복리후생",
+    "혜택 및 복지",
+    "기타사항",
+    "유의사항",
+    "접수방법",
+    "제출서류",
+    "회사소개",
+    "인재상",
+    "문의처",
 )
 
 
@@ -160,6 +192,57 @@ def normalize_text(text: str) -> str:
     return text.strip()
 
 
+def _declared_charset(content_type: str) -> str | None:
+    match = re.search(r"charset\s*=\s*[\"']?\s*([\w.-]+)", content_type or "", flags=re.IGNORECASE)
+    return match.group(1) if match else None
+
+
+def _meta_charset(body: bytes) -> str | None:
+    header = body[:4096].decode("latin-1", errors="ignore")
+    match = re.search(r"<meta[^>]+charset\s*=\s*[\"']?\s*([\w.-]+)", header, flags=re.IGNORECASE)
+    if match:
+        return match.group(1)
+    match = re.search(
+        r"<meta[^>]+content\s*=\s*[\"'][^\"']*charset\s*=\s*([\w.-]+)",
+        header,
+        flags=re.IGNORECASE,
+    )
+    return match.group(1) if match else None
+
+
+def _decode_response_body(body: bytes, content_type: str = "") -> str:
+    """Decode common career-page encodings without silently dropping Korean."""
+    declared = _declared_charset(content_type) or _meta_charset(body)
+    candidates = [declared, "utf-8", "cp949", "euc-kr"]
+    encodings: list[str] = []
+    for encoding in candidates:
+        if not encoding:
+            continue
+        try:
+            normalized = encoding.lower().replace("_", "-")
+            if normalized not in {item.lower().replace("_", "-") for item in encodings}:
+                encodings.append(encoding)
+        except AttributeError:
+            continue
+
+    decoded: list[tuple[int, str]] = []
+    for index, encoding in enumerate(encodings):
+        try:
+            value = body.decode(encoding, errors="replace")
+        except (LookupError, UnicodeError):
+            continue
+        replacement_count = value.count("\ufffd")
+        control_count = sum(1 for char in value if ord(char) < 9 or 13 < ord(char) < 32)
+        hangul_count = sum(1 for char in value if "가" <= char <= "힣")
+        # Prefer declared/UTF-8 when quality is tied, but penalize replacement
+        # and control characters heavily so CP949 pages are recovered.
+        score = hangul_count * 3 - replacement_count * 40 - control_count * 10 - index
+        decoded.append((score, value))
+    if not decoded:
+        return body.decode("utf-8", errors="replace")
+    return max(decoded, key=lambda item: item[0])[1]
+
+
 def _extract_jobposting_jsonld(html: str) -> dict[str, str]:
     """Read the structured JobPosting payload used by client-rendered sites."""
     script_pattern = re.compile(
@@ -206,7 +289,12 @@ def _extract_jobposting_jsonld(html: str) -> dict[str, str]:
 
 def _heading_matches(line: str, headings: tuple[str, ...]) -> bool:
     """Match a section heading without treating a normal sentence as one."""
-    lowered = normalize_text(line).casefold().strip(" :–—-")
+    lowered = normalize_text(line).casefold()
+    # Korean recruiting pages commonly decorate headings as
+    # "■ 자격요건", "[우대사항]", or "▶ 주요업무".
+    lowered = re.sub(r"^[\s\[\]■▶●◆※·*#▸•\-–—]+", "", lowered)
+    lowered = re.sub(r"[\s\[\]■▶●◆※·*#▸•\-–—]+$", "", lowered)
+    lowered = lowered.strip(" :–—-")
     if not lowered or len(lowered) > 90:
         return False
     return any(
@@ -242,7 +330,7 @@ def focus_job_content(text: str) -> str:
 
     result = normalize_text("\n".join(focused))
     # A false-positive heading should not discard a substantial description.
-    return result if len(result) >= 120 else text
+    return result if len(result) >= 120 or len(focused) >= 3 else text
 
 
 def _company_from_title(title: str) -> str:
@@ -284,7 +372,10 @@ def fetch_job_posting(url: str, timeout: int = 12) -> JobPosting:
     )
     try:
         with urlopen(request, timeout=timeout) as response:
-            html = response.read().decode("utf-8", errors="ignore")
+            body = response.read(MAX_RESPONSE_BYTES)
+            headers = getattr(response, "headers", {})
+            content_type = headers.get("Content-Type", "") if hasattr(headers, "get") else ""
+            html = _decode_response_body(body, content_type)
     except (HTTPError, URLError, TimeoutError) as exc:
         return JobPosting(
             title="Could not fetch this job page",
@@ -327,6 +418,11 @@ def fetch_job_posting(url: str, timeout: int = 12) -> JobPosting:
         "about the role",
         "job responsibilities",
         "profile",
+        "주요업무",
+        "담당업무",
+        "자격요건",
+        "지원자격",
+        "우대사항",
     )
     parsed_path = urlparse(url).path.casefold()
     title_lower = title.casefold()
