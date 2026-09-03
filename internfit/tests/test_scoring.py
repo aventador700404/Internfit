@@ -178,6 +178,18 @@ class FitScoringTests(unittest.TestCase):
         self.assertNotIn("robotics_data", without_preferred.gaps)
         self.assertNotIn("financial_modeling", without_preferred.gaps)
 
+    def test_inline_preferred_terms_do_not_become_core_domain_gaps(self):
+        job = JobPosting(
+            title="Operations Intern",
+            company="Example",
+            url="",
+            text="Support operations and market research. Experience with robotics is preferred.",
+        )
+        result = assess_fit(self.candidate, job)
+        self.assertEqual(result.eligibility, "Pass")
+        self.assertNotIn("robotics_data", result.gaps)
+        self.assertFalse(any("robotics" in reason for reason in result.penalty_reasons))
+
     def test_decision_bands_are_separate_from_hard_eligibility(self):
         self.assertEqual(_decision(90, []), "Apply now")
         self.assertEqual(_decision(70, []), "Apply after CV edits")
