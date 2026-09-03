@@ -14,13 +14,13 @@ from .job_parser import (
 
 
 TAG_PATTERNS = {
-    "strategy": ("strategy", "strategic", "planning", "portfolio"),
-    "research": ("research", "market", "analysis", "insight", "report"),
-    "operations": ("operation", "execution", "workflow", "process", "logistics", "coordination"),
-    "stakeholder": ("stakeholder", "communication", "ecosystem", "partner", "event", "workshop"),
-    "data_analysis": ("data analysis", "data analytics", "quantitative", "analytics", "dashboard", "analyze data"),
-    "technology": ("technology", "digital", "ai", "robotics", "systems", "deep tech"),
-    "finance": ("finance", "financial", "capital markets", "bond", "debt", "investment"),
+    "strategy": ("strategy", "strategic", "planning", "portfolio", "전략", "전략기획", "사업전략", "경영전략", "기획"),
+    "research": ("research", "market", "analysis", "insight", "report", "리서치", "시장조사", "시장 분석", "시장분석", "분석", "보고서"),
+    "operations": ("operation", "execution", "workflow", "process", "logistics", "coordination", "운영", "운영관리", "프로세스", "업무개선", "실행", "조율"),
+    "stakeholder": ("stakeholder", "communication", "ecosystem", "partner", "event", "workshop", "이해관계자", "유관부서", "파트너", "커뮤니케이션", "협업", "행사", "워크숍"),
+    "data_analysis": ("data analysis", "data analytics", "quantitative", "analytics", "dashboard", "analyze data", "데이터 분석", "데이터분석", "데이터", "정량분석", "통계", "대시보드"),
+    "technology": ("technology", "digital", "ai", "robotics", "systems", "deep tech", "기술", "디지털", "인공지능", "생성형 ai", "로보틱스", "시스템", "자동화"),
+    "finance": ("finance", "financial", "capital markets", "bond", "debt", "investment", "금융", "재무", "자본시장", "채권", "부채", "투자", "인수합병"),
     "event_management": (
         "event planning",
         "event management",
@@ -31,45 +31,49 @@ TAG_PATTERNS = {
         "workshop planning",
         "workshop coordination",
         "training coordination",
+        "행사기획",
+        "행사 운영",
+        "이벤트 운영",
+        "교육 운영",
     ),
-    "marketing": ("marketing", "social media", "campaign", "influencer", "content strategy", "brand"),
-    "sales": ("business development", "lead generation", "account management", "sales growth", "sales target"),
-    "software_engineering": ("software engineer", "software engineering", "backend", "frontend", "api", "programming language", "programming project", "developer", "coding"),
-    "mcp_integration": ("mcp", "model context protocol", "rest api", "api integration", "mcp server", "mcp client"),
-    "accounting": ("accounting", "audit", "journal entries", "reconciliation", "monthly close", "bookkeeping"),
-    "capital_markets": ("capital markets", "bond", "debt capital", "dc m"),
-    "market_monitoring": ("market monitoring", "financial markets", "trading"),
-    "pitch_materials": ("pitch", "marketing material", "investor presentation"),
-    "robotics_data": ("robotics", "3d scanning", "data labeling", "sensor", "robot learning"),
-    "financial_modeling": ("financial model", "financial modeling", "valuation", "valuations", "merger consequences"),
-    "due_diligence": ("due diligence", "diligence"),
+    "marketing": ("marketing", "social media", "campaign", "influencer", "content strategy", "brand", "마케팅", "소셜미디어", "캠페인", "인플루언서", "콘텐츠", "브랜딩"),
+    "sales": ("business development", "lead generation", "account management", "sales growth", "sales target", "영업", "사업개발", "리드 발굴", "고객관리"),
+    "software_engineering": ("software engineer", "software engineering", "backend", "frontend", "api", "programming language", "programming project", "developer", "coding", "소프트웨어 개발", "백엔드", "프론트엔드", "애플리케이션 개발", "프로그래밍", "코딩", "개발 프로젝트"),
+    "mcp_integration": ("mcp", "model context protocol", "rest api", "api integration", "mcp server", "mcp client", "모델 컨텍스트 프로토콜", "api 연동", "시스템 연동"),
+    "accounting": ("accounting", "audit", "journal entries", "reconciliation", "monthly close", "bookkeeping", "회계", "감사", "분개", "조정", "월말 마감", "장부"),
+    "capital_markets": ("capital markets", "bond", "debt capital", "dc m", "자본시장", "채권발행", "채권", "부채자본"),
+    "market_monitoring": ("market monitoring", "financial markets", "trading", "시장 모니터링", "금융시장", "시장 동향", "트레이딩"),
+    "pitch_materials": ("pitch", "marketing material", "investor presentation", "피치", "마케팅 자료", "투자자 프레젠테이션", "제안서"),
+    "robotics_data": ("robotics", "3d scanning", "data labeling", "sensor", "robot learning", "로보틱스", "3d 스캐닝", "데이터 라벨링", "센서", "로봇 학습"),
+    "financial_modeling": ("financial model", "financial modeling", "valuation", "valuations", "merger consequences", "재무 모델", "재무 모델링", "밸류에이션", "기업가치평가"),
+    "due_diligence": ("due diligence", "diligence", "실사", "기업실사"),
 }
 
 TOOL_PATTERNS = {
-    "excel": ("excel",),
-    "powerpoint": ("powerpoint",),
-    "word": ("word",),
-    "sql": ("sql",),
-    "ai_tools": ("ai tool", "ai collaboration", "generative ai", "artificial intelligence"),
-    "python": ("python",),
-    "java": ("java",),
-    "javascript": ("javascript", "typescript"),
+    "excel": ("excel", "엑셀"),
+    "powerpoint": ("powerpoint", "파워포인트", "ppt", "피피티"),
+    "word": ("word", "워드"),
+    "sql": ("sql", "sqld", "에스큐엘"),
+    "ai_tools": ("ai tool", "ai collaboration", "generative ai", "artificial intelligence", "생성형 ai", "생성형 인공지능", "프롬프트", "llm"),
+    "python": ("python", "파이썬"),
+    "java": ("java", "자바"),
+    "javascript": ("javascript", "typescript", "자바스크립트", "타입스크립트"),
     "git": ("git", "github"),
-    "docker": ("docker",),
-    "kubernetes": ("kubernetes",),
-    "power_bi": ("power bi",),
-    "notion": ("notion",),
-    "asana": ("asana",),
+    "docker": ("docker", "도커"),
+    "kubernetes": ("kubernetes", "쿠버네티스"),
+    "power_bi": ("power bi", "파워 bi"),
+    "notion": ("notion", "노션"),
+    "asana": ("asana", "아사나"),
     "sap": ("sap",),
-    "erp": ("erp",),
-    "figma": ("figma",),
+    "erp": ("erp", "전사적 자원관리"),
+    "figma": ("figma", "피그마"),
 }
 
 LANGUAGE_PATTERNS = {
-    "japanese": ("japanese",),
-    "chinese": ("chinese", "mandarin"),
-    "english": ("english",),
-    "korean": ("korean",),
+    "japanese": ("japanese", "일본어", "jlpt"),
+    "chinese": ("chinese", "mandarin", "중국어", "만다린", "hsk"),
+    "english": ("english", "영어", "토익", "토플", "토스", "오픽", "teps"),
+    "korean": ("korean", "한국어", "국어", "모국어"),
 }
 
 
@@ -221,6 +225,17 @@ METADATA_PREFIXES = (
     "research & business skills:",
     "selected analytical methods:",
     "interests:",
+    "프로필",
+    "요약:",
+    "경력 요약:",
+    "학력:",
+    "교육:",
+    "기술:",
+    "보유 기술:",
+    "자격증:",
+    "언어:",
+    "역량:",
+    "관심 분야:",
 )
 
 OPTIONAL_CUES = (
@@ -235,6 +250,19 @@ OPTIONAL_CUES = (
     "ideally",
     "not required",
     "optional",
+    "우대",
+    "우대함",
+    "우대합니다",
+    "있으면 좋음",
+    "있으시면",
+    "플러스",
+    "가산점",
+    "선호",
+    "무방",
+    "관계없음",
+    "무관",
+    "필수 아님",
+    "권장",
 )
 
 PREFERRED_SECTION_HEADINGS = (
@@ -248,6 +276,13 @@ PREFERRED_SECTION_HEADINGS = (
     "bonus qualifications",
     "additional qualification",
     "additional qualifications",
+    "우대사항",
+    "우대조건",
+    "우대요건",
+    "이런 분이면 더 좋아요",
+    "이런 경험이 있으면 좋아요",
+    "플러스 요인",
+    "있으면 좋은 경험",
 )
 
 REQUIRED_CUES = (
@@ -264,6 +299,21 @@ REQUIRED_CUES = (
     "strong command",
     "ability to",
     "you will",
+    "필수",
+    "반드시",
+    "가능자",
+    "가능하신",
+    "능숙",
+    "능통",
+    "숙련",
+    "보유자",
+    "보유하신",
+    "경험자",
+    "유경험자",
+    "자격",
+    "요건",
+    "조건",
+    "해당자",
 )
 
 
@@ -287,7 +337,10 @@ class FitResult:
 
 def _heading_matches(line: str, headings: tuple[str, ...]) -> bool:
     """Match a short section heading without treating a sentence as one."""
-    lowered = _normalise_line(line).casefold().strip(" :–—-")
+    lowered = _normalise_line(line).casefold()
+    lowered = re.sub(r"^[\s\[\]■▶●◆※·*#▸•\-–—]+", "", lowered)
+    lowered = re.sub(r"[\s\[\]■▶●◆※·*#▸•\-–—]+$", "", lowered)
+    lowered = lowered.strip(" :–—-")
     if not lowered or len(lowered) > 90:
         return False
     return any(
@@ -340,7 +393,7 @@ def _text_units(text: str) -> list[str]:
             continue
         units.extend(
             piece.strip()
-            for piece in re.split(r"(?<=[.!?])\s+|[;•]", clean)
+            for piece in re.split(r"(?<=[.!?。！？])\s+|[;•]", clean)
             if piece.strip()
         )
     return units or [_normalise_line(text)]
@@ -421,8 +474,12 @@ def _present_tags(text: str, patterns: dict[str, tuple[str, ...]]) -> set[str]:
 
 def _contains_term(text: str, term: str) -> bool:
     """Match a whole word/phrase so short terms do not hit substrings."""
-    escaped = re.escape(term.lower().strip()).replace(r"\ ", r"\s+")
-    return bool(re.search(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", text.casefold()))
+    normalized_text = re.sub(r"\s+", " ", text.casefold()).strip()
+    normalized_term = re.sub(r"\s+", " ", term.casefold()).strip()
+    if re.search(r"[가-힣]", normalized_term):
+        return re.sub(r"\s+", "", normalized_term) in re.sub(r"\s+", "", normalized_text)
+    escaped = re.escape(normalized_term).replace(r"\ ", r"\s+")
+    return bool(re.search(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", normalized_text))
 
 
 def _mention_contexts(text: str, terms: Iterable[str], window: int = 180) -> list[str]:
@@ -510,6 +567,9 @@ def _unique_lines(lines: Iterable[str]) -> list[str]:
 
 def _is_metadata_line(line: str) -> bool:
     lowered = _normalise_line(line).casefold()
+    lowered = re.sub(r"^[\s\[\]■▶●◆※·*#▸•\-–—]+", "", lowered)
+    lowered = re.sub(r"[\s\[\]■▶●◆※·*#▸•\-–—]+$", "", lowered)
+    lowered = lowered.strip(" :–—-")
     if lowered.startswith(tuple(prefix.casefold() for prefix in METADATA_PREFIXES)):
         return True
     if lowered.startswith("global business administration b.b.a. candidate"):
@@ -521,6 +581,19 @@ def _is_metadata_line(line: str) -> bool:
         "selected strategy, innovation & digital projects",
         "selected projects (continued)",
         "additional capabilities",
+        "프로필",
+        "요약",
+        "경력 요약",
+        "학력",
+        "교육",
+        "기술",
+        "보유 기술",
+        "자격증",
+        "언어",
+        "역량",
+        "관심 분야",
+        "경력사항",
+        "주요 프로젝트",
     }:
         return True
     return False
@@ -602,6 +675,13 @@ def _has_business_degree(candidate: CandidateProfile) -> bool:
         "candidate",
         "university",
         "college",
+        "학사",
+        "석사",
+        "박사",
+        "전공",
+        "재학",
+        "대학교",
+        "대학",
     )
     business_fields = (
         "business administration",
@@ -614,6 +694,16 @@ def _has_business_degree(candidate: CandidateProfile) -> bool:
         "marketing",
         "b.b.a",
         "bba",
+        "경영학",
+        "경영학과",
+        "경영학부",
+        "글로벌경영",
+        "경제학",
+        "상경계열",
+        "경상계열",
+        "무역학",
+        "국제통상",
+        "경영정보학",
     )
     return any(
         any(_contains_term(line, marker) for marker in degree_markers)
@@ -623,11 +713,11 @@ def _has_business_degree(candidate: CandidateProfile) -> bool:
 
 
 GRADUATE_DEGREE_RE = re.compile(
-    r"(?<![a-z0-9])(?:ms|m\.s\.|master(?:'s)?|ph\.?d\.?|doctoral)(?![a-z0-9])",
+    r"(?<![a-z0-9])(?:ms|m\.s\.|master(?:'s)?|ph\.?d\.?|doctoral)(?![a-z0-9])|석사|박사",
     re.IGNORECASE,
 )
 TECHNICAL_DEGREE_RE = re.compile(
-    r"\b(?:computer science|computer engineering|electrical engineering|software engineering)\b",
+    r"\b(?:computer science|computer engineering|electrical engineering|software engineering)\b|컴퓨터\s*공학|전기전자공학|전자공학|소프트웨어학(?:과)?|전산학|인공지능학(?:과)?",
     re.IGNORECASE,
 )
 
@@ -651,6 +741,13 @@ def _has_required_graduate_technical_degree(text: str) -> bool:
                 "currently enrolled",
                 "must be enrolled",
                 "degree program",
+                "필수",
+                "자격요건",
+                "지원자격",
+                "학위 과정",
+                "재학 중",
+                "석사 이상",
+                "박사 이상",
             )
         )
         optional_only = any(cue in context for cue in OPTIONAL_CUES) and not any(
@@ -680,7 +777,7 @@ def _has_graduate_technical_degree(candidate: CandidateProfile) -> bool:
 def _has_technical_degree(candidate: CandidateProfile) -> bool:
     """Require a technical field to appear in actual education context."""
     degree_signal = re.compile(
-        r"\b(?:degree|bachelor|master|ph\.?d|doctoral|major|candidate|university|college)\b",
+        r"\b(?:degree|bachelor|master|ph\.?d|doctoral|major|candidate|university|college)\b|학위|학사|석사|박사|전공|대학교|대학",
         re.IGNORECASE,
     )
     lines = [line.strip() for line in candidate.raw_text.splitlines() if line.strip()]
@@ -704,11 +801,17 @@ def _passed_core_checks(candidate: CandidateProfile, checks: set[str]) -> set[st
         passed.add("japanese")
     if "chinese" in checks and "chinese" in candidate.languages:
         passed.add("chinese")
-    if "capital_markets_knowledge" in checks and "capital markets" in lowered:
+    if "capital_markets_knowledge" in checks and any(
+        _contains_term(lowered, phrase)
+        for phrase in ("capital markets", "자본시장", "채권", "채권발행")
+    ):
         passed.add("capital_markets_knowledge")
     if "computer_science_degree" in checks and _has_technical_degree(candidate):
         passed.add("computer_science_degree")
-    if "accounting_degree" in checks and _contains_term(lowered, "accounting"):
+    if "accounting_degree" in checks and any(
+        _contains_term(lowered, phrase)
+        for phrase in ("accounting", "회계", "회계학")
+    ):
         passed.add("accounting_degree")
     if "graduate_technical_degree" in checks and _has_graduate_technical_degree(candidate):
         passed.add("graduate_technical_degree")
@@ -721,11 +824,24 @@ def _infer_core_checks(text: str, required_languages: set[str], specification: d
     checks: set[str] = set()
     if "english" in required_languages or _is_required_mention(text, LANGUAGE_PATTERNS["english"]):
         checks.add("english")
-    if any(_contains_term(text, phrase) for phrase in ("intern", "undergraduate", "student", "graduating")):
+    if any(
+        _contains_term(text, phrase)
+        for phrase in ("intern", "undergraduate", "student", "graduating", "인턴", "재학생", "졸업예정", "재학 중")
+    ):
         checks.add("student")
     if any(
         _is_required_mention(text, (phrase,))
-        for phrase in ("business administration", "business degree", "business major")
+        for phrase in (
+            "business administration",
+            "business degree",
+            "business major",
+            "경영학",
+            "경영학과",
+            "상경계열",
+            "경상계열",
+            "무역학",
+            "국제통상",
+        )
     ):
         checks.add("business_degree")
     if _has_required_graduate_technical_degree(text):
@@ -736,6 +852,11 @@ def _infer_core_checks(text: str, required_languages: set[str], specification: d
             "computer science degree",
             "computer engineering degree",
             "software engineering degree",
+            "컴퓨터공학 전공",
+            "컴퓨터공학과",
+            "전자공학과",
+            "소프트웨어학과",
+            "전기전자공학",
         )
     ):
         checks.add("computer_science_degree")
@@ -787,6 +908,7 @@ STOPWORDS = {
     "about", "after", "also", "and", "are", "been", "being", "from", "have", "into", "more",
     "that", "their", "this", "through", "with", "will", "your", "role", "work", "what", "where",
     "which", "such", "than", "then", "they", "them", "those", "these", "using", "including",
+    "그리고", "또는", "관련", "업무", "담당", "경험", "능력", "가능", "대한", "통한", "위한", "기타", "이상", "우대",
 }
 
 
@@ -796,10 +918,11 @@ def _line_quality(line: str, job_words: set[str] | None = None) -> tuple[int, in
     action_words = (
         "led", "conducted", "screened", "designed", "developed", "managed", "translated",
         "interpreted", "assessed", "evaluated", "founded", "attracted", "built", "supported",
+        "주도", "수행", "분석", "개발", "기획", "운영", "개선", "달성", "구축", "설계", "담당", "참여",
     )
     action_score = sum(1 for word in action_words if _contains_term(lowered, word))
     number_score = 1 if re.search(r"\d", clean) else 0
-    line_words = set(re.findall(r"[a-z]{4,}", lowered)) - STOPWORDS
+    line_words = set(re.findall(r"[a-z]{4,}|[가-힣]{2,}", lowered)) - STOPWORDS
     overlap = len(line_words & (job_words or set()))
     return (0 if _is_metadata_line(clean) else 1, overlap, action_score + number_score, len(clean))
 
@@ -819,7 +942,7 @@ def _best_evidence_line(
     ]
     if not available:
         return None
-    job_words = set(re.findall(r"[a-z]{4,}", job_text.casefold())) - STOPWORDS
+    job_words = set(re.findall(r"[a-z]{4,}|[가-힣]{2,}", job_text.casefold())) - STOPWORDS
     return max(available, key=lambda line: _line_quality(line, job_words))
 
 
@@ -916,12 +1039,25 @@ def _specificity_penalties(
             "degree program in computer science",
             "degree program in computer engineering",
             "degree program in electrical engineering",
+            "컴퓨터공학 전공",
+            "컴퓨터공학과",
+            "전자공학과",
+            "소프트웨어학과",
+            "전기전자공학",
         )
     )
     if engineering_degree_language:
         has_adjacent_degree = any(
             _contains_term(candidate.raw_text, phrase)
-            for phrase in ("computer science", "computer engineering", "software engineering")
+            for phrase in (
+                "computer science",
+                "computer engineering",
+                "software engineering",
+                "컴퓨터공학",
+                "전자공학",
+                "소프트웨어학",
+                "전기전자공학",
+            )
         )
         if not has_adjacent_degree:
             points += 6
@@ -1010,7 +1146,7 @@ def assess_fit(candidate: CandidateProfile, job: JobPosting) -> FitResult:
     # degree lowers the score without incorrectly turning into a hard blocker.
     if any(
         _contains_term(text, phrase)
-        for phrase in ("accounting degree", "accounting major")
+        for phrase in ("accounting degree", "accounting major", "회계학과", "회계 전공")
     ):
         core_checks.add("accounting_degree")
 
