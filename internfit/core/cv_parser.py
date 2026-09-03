@@ -458,3 +458,13 @@ def _profile_from_lines(lines: list[str], source_name: str) -> CandidateProfile:
         for line in lines
         if re.search(r"\b(?:university|college|school|institute)\b", line, flags=re.IGNORECASE)
         or re.search(r"(?:대학교|대학|재학|학사|석사|박사|경영학|경제학|무역학|국제통상)", line)
+    ]
+    return CandidateProfile(
+        source_name=source_name,
+        raw_text=raw_text,
+        evidence=evidence,
+        languages=languages,
+        tools=tools,
+        graduation=graduation,
+        education=education,
+    )
