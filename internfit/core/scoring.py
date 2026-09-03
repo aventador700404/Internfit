@@ -331,6 +331,81 @@ def _split_preferred_text(text: str) -> tuple[str, str]:
     return "\n".join(core), "\n".join(preferred)
 
 
+def _text_units(text: str) -> list[str]:
+    """Break prose into small enough units to classify nearby cues."""
+    units: list[str] = []
+    for line in text.splitlines():
+        clean = _normalise_line(line)
+        if not clean:
+            continue
+        units.extend(
+            piece.strip()
+            for piece in re.split(r"(?<=[.!?])\s+|[;•]", clean)
+            if piece.strip()
+        )
+    return units or [_normalise_line(text)]
+
+
+def _cue_positions(text: str, cues: Iterable[str]) -> list[int]:
+    lowered = text.casefold()
+    positions: list[int] = []
+    for cue in cues:
+        start = 0
+        needle = cue.casefold()
+        while True:
+            position = lowered.find(needle, start)
+            if position < 0:
+                break
+            positions.append(position)
+            start = position + max(1, len(needle))
+    return positions
+
+
+def _term_is_preferred_in_unit(unit: str, terms: Iterable[str]) -> bool:
+    lowered = unit.casefold()
+    optional_positions = _cue_positions(lowered, OPTIONAL_CUES)
+    required_positions = _cue_positions(lowered, REQUIRED_CUES)
+    if not optional_positions:
+        return False
+    for term in terms:
+        escaped = re.escape(term.casefold().strip()).replace(r"\ ", r"\s+")
+        for match in re.finditer(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", lowered):
+            optional_distance = min(abs(position - match.start()) for position in optional_positions)
+            required_distance = (
+                min(abs(position - match.start()) for position in required_positions)
+                if required_positions
+                else float("inf")
+            )
+            if optional_distance <= 120 and optional_distance < required_distance:
+                return True
+    return False
+
+
+def _classify_tag_contexts(
+    text: str,
+    patterns: dict[str, tuple[str, ...]],
+) -> tuple[set[str], set[str]]:
+    """Return (core tags, preferred-only tags) for inline job-posting prose."""
+    present = _present_tags(text, patterns)
+    core: set[str] = set()
+    preferred: set[str] = set()
+    units = _text_units(text)
+    for tag in present:
+        matching_units = [
+            unit
+            for unit in units
+            if any(_contains_term(unit, term) for term in patterns.get(tag, ()))
+        ]
+        if not matching_units:
+            core.add(tag)
+            continue
+        if any(_term_is_preferred_in_unit(unit, patterns[tag]) for unit in matching_units):
+            preferred.add(tag)
+        if any(not _term_is_preferred_in_unit(unit, patterns[tag]) for unit in matching_units):
+            core.add(tag)
+    return core, preferred
+
+
 def _present_tags(text: str, patterns: dict[str, tuple[str, ...]]) -> set[str]:
     lowered = text.lower()
     tags = {tag for tag, words in patterns.items() if any(_contains_term(lowered, word) for word in words)}
@@ -891,21 +966,33 @@ def assess_fit(candidate: CandidateProfile, job: JobPosting) -> FitResult:
     core_body, preferred_body = _split_preferred_text(focused_body)
     text = "\n".join(part for part in (job.title, core_body) if part).casefold()
     preferred_text = preferred_body.casefold()
-    job_tags = _present_tags(text, TAG_PATTERNS)
+    core_job_tags, inline_preferred_tags = _classify_tag_contexts(text, TAG_PATTERNS)
+    _, inline_preferred_tools = _classify_tag_contexts(text, TOOL_PATTERNS)
+    _, inline_preferred_languages = _classify_tag_contexts(text, LANGUAGE_PATTERNS)
+    preferred_body_tags = _present_tags(preferred_text, TAG_PATTERNS)
     candidate_tags = candidate.evidence_tags
     specification = job.requirements or {}
 
-    responsibility_tags = set(specification.get("responsibility_tags", job_tags))
-    domain_tags = set(specification.get("domain_tags", job_tags & DOMAIN_TAGS))
-    preferred_tags = set(specification.get("preferred_tags", _present_tags(preferred_text, TAG_PATTERNS)))
-    preferred_domain_tags = set(
-        specification.get("preferred_domain_tags", preferred_tags & DOMAIN_TAGS)
+    responsibility_tags = set(specification.get("responsibility_tags", core_job_tags))
+    domain_tags = set(specification.get("domain_tags", core_job_tags & DOMAIN_TAGS))
+    preferred_tags = (
+        set(specification.get("preferred_tags") or set())
+        | preferred_body_tags
+        | inline_preferred_tags
     )
-    preferred_tools = set(
-        specification.get("preferred_tools", _present_tags(preferred_text, TOOL_PATTERNS))
+    preferred_domain_tags = (
+        set(specification.get("preferred_domain_tags") or set())
+        | (preferred_tags & DOMAIN_TAGS)
     )
-    preferred_languages = set(
-        specification.get("preferred_languages", _present_tags(preferred_text, LANGUAGE_PATTERNS))
+    preferred_tools = (
+        set(specification.get("preferred_tools") or set())
+        | _present_tags(preferred_text, TOOL_PATTERNS)
+        | inline_preferred_tools
+    )
+    preferred_languages = (
+        set(specification.get("preferred_languages") or set())
+        | _present_tags(preferred_text, LANGUAGE_PATTERNS)
+        | inline_preferred_languages
     )
     required_tools = (
         set(specification["required_tools"])
