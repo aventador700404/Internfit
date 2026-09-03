@@ -95,3 +95,25 @@ class JobParserTests(unittest.TestCase):
         finally:
             path.unlink(missing_ok=True)
         self.assertIn("Fluent Mandarin Chinese", posting.text)
+
+    def test_focuses_role_sections_and_drops_company_boilerplate(self):
+        html = """
+        <html><body>
+        <p>Qualcomm Overview</p><p>Global technology company with unrelated robotics jobs.</p>
+        <main><h2>Role Overview</h2><p>Build and maintain an MCP server for this team.</p>
+        <h2>Minimum Qualification</h2><p>Currently enrolled in a MS or PhD program in computer science.</p>
+        <h2>About Qualcomm</h2><p>Company marketing and other opportunities.</p>
+        </main>
+        </body></html>
+        """
+        with NamedTemporaryFile(mode="w", suffix=".html", delete=False) as file:
+            file.write(html)
+            path = Path(file.name)
+        try:
+            posting = fetch_job_posting(path.as_uri())
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertIn("MCP server", posting.text)
+        self.assertIn("MS or PhD", posting.text)
+        self.assertNotIn("unrelated robotics", posting.text)
+        self.assertNotIn("Company marketing", posting.text)
