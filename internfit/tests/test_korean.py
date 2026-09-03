@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from core.cv_parser import _profile_from_lines
+from core.cv_parser import _profile_from_lines, extract_pdf_bytes
 from core.job_parser import JobPosting, fetch_job_posting, focus_job_content
 from core.scoring import _split_preferred_text, assess_fit
 
@@ -19,6 +19,19 @@ class _FakeResponse:
 
     def read(self, limit: int = -1) -> bytes:
         return self.body if limit < 0 else self.body[:limit]
+
+
+class _FakePdfPage:
+    def __init__(self, text: str):
+        self.text = text
+
+    def extract_text(self) -> str:
+        return self.text
+
+
+class _FakePdfReader:
+    def __init__(self, _stream):
+        self.pages = [_FakePdfPage("�� ��")]
 
 
 class KoreanSupportTests(unittest.TestCase):
@@ -133,6 +146,15 @@ class KoreanSupportTests(unittest.TestCase):
         self.assertEqual(posting.source_status, "ok")
         self.assertIn("국문 전략 인턴", posting.title)
         self.assertIn("시장조사", posting.text)
+
+    def test_pdfminer_fallback_recovers_korean_text(self):
+        korean_text = "성균관대학교 글로벌경영학과 재학\n전략기획 및 시장조사 경험"
+        with patch("core.cv_parser.PdfReader", _FakePdfReader), patch(
+            "core.cv_parser._extract_pdfminer_text", return_value=korean_text
+        ):
+            lines = extract_pdf_bytes(b"not-a-real-pdf")
+
+        self.assertEqual(lines, korean_text.splitlines())
 
 
 if __name__ == "__main__":
