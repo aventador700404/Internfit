@@ -149,8 +149,27 @@ def _profile_from_lines(lines: list[str], source_name: str) -> CandidateProfile:
         for tool, needles in TOOL_RULES.items()
         if any(_contains_term(raw_text, needle) for needle in needles)
     }
-    graduation = next((line for line in lines if "B.B.A. Candidate" in line), None)
-    education = [line for line in lines if "University" in line or "Student" in line]
+    graduation_patterns = (
+        r"\b(?:bachelor|master|ph\.?d|undergraduate|graduate)\s+(?:student|candidate)\b",
+        r"\b(?:candidate|student)\b.*(?:\b20\d{2}\b|\buniversity\b|\bcollege\b)",
+        r"\b(?:expected|anticipated)\s+(?:graduation|completion|to graduate)\b",
+        r"\bclass of\s+20\d{2}\b",
+        r"(?:졸업예정|재학)",
+    )
+    graduation = next(
+        (
+            line
+            for line in lines
+            if any(re.search(pattern, line, flags=re.IGNORECASE) for pattern in graduation_patterns)
+        ),
+        None,
+    )
+    education = [
+        line
+        for line in lines
+        if re.search(r"\b(?:university|college|school|institute)\b", line, flags=re.IGNORECASE)
+        or re.search(r"(?:재학|학사|석사|박사)", line)
+    ]
     return CandidateProfile(
         source_name=source_name,
         raw_text=raw_text,
@@ -160,3 +179,4 @@ def _profile_from_lines(lines: list[str], source_name: str) -> CandidateProfile:
         graduation=graduation,
         education=education,
     )
+
