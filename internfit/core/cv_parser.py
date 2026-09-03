@@ -12,47 +12,88 @@ from pypdf import PdfReader
 
 
 EVIDENCE_RULES = {
-    "strategy": ("strategy", "strategic", "portfolio", "bcg matrix", "five forces", "vrio"),
-    "research": ("research", "screened", "market", "consumer", "interview", "insight"),
-    "operations": ("operations", "operation", "planning", "execution", "coordination", "logistics"),
-    "stakeholder": ("stakeholder", "partnered", "communication", "community", "cross-cultural"),
-    "data_analysis": ("data", "analytics", "analysis", "quantitative", "excel", "financial"),
-    "technology": ("technology", "information systems", "digital", "platform", "ai", "generative ai"),
-    "finance": ("finance", "fintech", "investment", "financial", "m&a", "acquisition"),
-    "event_management": ("event", "recruitment", "onboarding", "training", "member"),
-    "marketing": ("marketing", "social media", "campaign", "influencer", "content strategy", "brand"),
-    "sales": ("sales", "business development", "lead generation", "account management"),
+    "strategy": (
+        "strategy", "strategic", "portfolio", "bcg matrix", "five forces", "vrio",
+        "전략", "전략기획", "사업전략", "경영전략", "기획",
+    ),
+    "research": (
+        "research", "screened", "market", "consumer", "interview", "insight",
+        "리서치", "시장조사", "시장 분석", "시장분석", "소비자 조사", "인사이트",
+    ),
+    "operations": (
+        "operations", "operation", "planning", "execution", "coordination", "logistics",
+        "운영", "운영관리", "프로세스 개선", "업무 개선", "실행", "조율",
+    ),
+    "stakeholder": (
+        "stakeholder", "partnered", "communication", "community", "cross-cultural",
+        "이해관계자", "유관부서", "파트너", "커뮤니케이션", "협업", "커뮤니티",
+    ),
+    "data_analysis": (
+        "data", "analytics", "analysis", "quantitative", "excel", "financial",
+        "데이터", "데이터 분석", "데이터분석", "통계", "정량분석", "엑셀",
+    ),
+    "technology": (
+        "technology", "information systems", "digital", "platform", "ai", "generative ai",
+        "기술", "디지털", "인공지능", "생성형 ai", "플랫폼", "시스템", "자동화",
+    ),
+    "finance": (
+        "finance", "fintech", "investment", "financial", "m&a", "acquisition",
+        "금융", "재무", "투자", "자본시장", "채권", "인수합병",
+    ),
+    "event_management": (
+        "event", "recruitment", "onboarding", "training", "member",
+        "행사", "이벤트", "워크숍", "교육 운영", "행사기획",
+    ),
+    "marketing": (
+        "marketing", "social media", "campaign", "influencer", "content strategy", "brand",
+        "마케팅", "소셜미디어", "캠페인", "인플루언서", "콘텐츠", "브랜딩",
+    ),
+    "sales": (
+        "sales", "business development", "lead generation", "account management",
+        "영업", "사업개발", "리드 발굴", "고객관리",
+    ),
     # Keep generic credentials such as "SQL Developer" from turning a business
     # candidate into a software engineer.  A real engineering signal should be
     # an engineering role, a programming deliverable, or a concrete stack.
-    "software_engineering": ("software engineer", "software engineering", "backend", "frontend", "api", "programming language", "programming project", "software developer", "coding"),
-    "mcp_integration": ("mcp", "model context protocol", "rest api", "api integration", "mcp server", "mcp client"),
-    "accounting": ("accounting", "audit", "journal entries", "reconciliation", "monthly close", "bookkeeping"),
+    "software_engineering": (
+        "software engineer", "software engineering", "backend", "frontend", "api",
+        "programming language", "programming project", "software developer", "coding",
+        "소프트웨어 개발", "백엔드", "프론트엔드", "애플리케이션 개발", "프로그래밍",
+        "코딩", "개발 프로젝트",
+    ),
+    "mcp_integration": (
+        "mcp", "model context protocol", "rest api", "api integration", "mcp server", "mcp client",
+        "모델 컨텍스트 프로토콜", "api 연동", "시스템 연동",
+    ),
+    "accounting": (
+        "accounting", "audit", "journal entries", "reconciliation", "monthly close", "bookkeeping",
+        "회계", "감사", "분개", "조정", "월말 마감", "장부",
+    ),
 }
 
 LANGUAGE_RULES = {
-    "korean": ("korean (native)", "korean"),
-    "english": ("english (cefr c1", "toefl", "english"),
-    "german": ("german (cefr a2", "german"),
-    "japanese": ("japanese",),
-    "chinese": ("chinese", "mandarin"),
+    "korean": ("korean (native)", "korean", "한국어", "국어", "모국어"),
+    "english": ("english (cefr c1", "toefl", "english", "영어", "토익", "토플", "토스", "오픽", "teps"),
+    "german": ("german (cefr a2", "german", "독일어"),
+    "japanese": ("japanese", "일본어", "jlpt"),
+    "chinese": ("chinese", "mandarin", "중국어", "만다린", "hsk"),
 }
 
 TOOL_RULES = {
-    "excel": ("excel",),
-    "powerpoint": ("powerpoint",),
-    "word": ("word",),
-    "sql": ("sqld", "sql"),
-    "ai_tools": ("generative ai", "ai tools", "rapid prototyping"),
-    "python": ("python",),
+    "excel": ("excel", "엑셀"),
+    "powerpoint": ("powerpoint", "파워포인트", "ppt", "피피티"),
+    "word": ("word", "워드"),
+    "sql": ("sqld", "sql", "에스큐엘"),
+    "ai_tools": ("generative ai", "ai tools", "rapid prototyping", "생성형 ai", "생성형 인공지능", "프롬프트", "llm"),
+    "python": ("python", "파이썬"),
     "java": ("java",),
-    "javascript": ("javascript", "typescript"),
+    "javascript": ("javascript", "typescript", "자바스크립트", "타입스크립트"),
     "git": ("git", "github"),
-    "docker": ("docker",),
-    "kubernetes": ("kubernetes",),
-    "power_bi": ("power bi",),
-    "notion": ("notion",),
-    "asana": ("asana",),
+    "docker": ("docker", "도커"),
+    "kubernetes": ("kubernetes", "쿠버네티스"),
+    "power_bi": ("power bi", "파워 bi"),
+    "notion": ("notion", "노션"),
+    "asana": ("asana", "아사나"),
     "sap": ("sap",),
     "erp": ("erp",),
     "figma": ("figma",),
@@ -124,8 +165,15 @@ def _matching_lines(lines: Iterable[str], needles: tuple[str, ...]) -> list[str]
 
 
 def _contains_term(text: str, term: str) -> bool:
-    escaped = re.escape(term.lower().strip()).replace(r"\ ", r"\s+")
-    return bool(re.search(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", text.lower()))
+    normalized_text = re.sub(r"\s+", " ", text.casefold()).strip()
+    normalized_term = re.sub(r"\s+", " ", term.casefold()).strip()
+    if re.search(r"[가-힣]", normalized_term):
+        # Korean particles and spacing vary in resumes, e.g. "시장 분석을"
+        # versus "시장분석". Keep aliases specific enough to avoid broad
+        # single-syllable matches, then compare a compact form.
+        return re.sub(r"\s+", "", normalized_term) in re.sub(r"\s+", "", normalized_text)
+    escaped = re.escape(normalized_term).replace(r"\ ", r"\s+")
+    return bool(re.search(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", normalized_text))
 
 
 def parse_cv(file_path: str | Path) -> CandidateProfile:
@@ -169,7 +217,7 @@ def _profile_from_lines(lines: list[str], source_name: str) -> CandidateProfile:
         line
         for line in lines
         if re.search(r"\b(?:university|college|school|institute)\b", line, flags=re.IGNORECASE)
-        or re.search(r"(?:재학|학사|석사|박사)", line)
+        or re.search(r"(?:대학교|대학|재학|학사|석사|박사|경영학|경제학|무역학|국제통상)", line)
     ]
     return CandidateProfile(
         source_name=source_name,
