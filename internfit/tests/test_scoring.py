@@ -88,6 +88,20 @@ class FitScoringTests(unittest.TestCase):
         )
         self.assertEqual(candidate.graduation, "Bachelor of Arts Candidate, Class of 2027")
 
+    def test_related_business_degree_is_not_bba_specific(self):
+        candidate = _profile_from_lines(
+            ["Bachelor of Science in Management, Class of 2027", "Example University"],
+            "friend.docx",
+        )
+        job = JobPosting(
+            title="Business Intern",
+            company="Example",
+            url="",
+            text="Requirements: business degree and current student status.",
+        )
+        result = assess_fit(candidate, job)
+        self.assertNotIn("missing qualification: business_degree", result.gaps)
+
 
 if __name__ == "__main__":
     unittest.main()
