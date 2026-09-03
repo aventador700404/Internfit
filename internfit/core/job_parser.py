@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from html import unescape
 from html.parser import HTMLParser
 from typing import Any
+import json
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import re
@@ -89,7 +90,15 @@ class _TextExtractor(HTMLParser):
             attributes = {key.lower(): value or "" for key, value in attrs}
             key = (attributes.get("property") or attributes.get("name") or "").lower()
             content = attributes.get("content", "").strip()
-            if key in {"og:title", "og:site_name", "application-name", "twitter:title"} and content:
+            if key in {
+                "og:title",
+                "og:site_name",
+                "application-name",
+                "twitter:title",
+                "description",
+                "og:description",
+                "twitter:description",
+            } and content:
                 self.meta[key] = content
         if tag == "title":
             self.in_title = True
@@ -149,6 +158,50 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n\s*\n+", "\n", text)
     return text.strip()
+
+
+def _extract_jobposting_jsonld(html: str) -> dict[str, str]:
+    """Read the structured JobPosting payload used by client-rendered sites."""
+    script_pattern = re.compile(
+        r"<script[^>]+type=[\"']application/ld\+json[\"'][^>]*>(.*?)</script>",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    def find_job_posting(value: Any) -> dict[str, Any] | None:
+        if isinstance(value, list):
+            for item in value:
+                found = find_job_posting(item)
+                if found:
+                    return found
+            return None
+        if not isinstance(value, dict):
+            return None
+        type_value = value.get("@type", "")
+        types = type_value if isinstance(type_value, list) else [type_value]
+        if any(str(item).casefold() == "jobposting" for item in types):
+            return value
+        for key in ("@graph", "mainEntity", "item"):
+            found = find_job_posting(value.get(key))
+            if found:
+                return found
+        return None
+
+    for match in script_pattern.finditer(html):
+        try:
+            payload = json.loads(unescape(match.group(1).strip()))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        posting = find_job_posting(payload)
+        if not posting:
+            continue
+        organization = posting.get("hiringOrganization")
+        company = organization.get("name", "") if isinstance(organization, dict) else ""
+        return {
+            "title": str(posting.get("title", "")).strip(),
+            "description": str(posting.get("description", "")).strip(),
+            "company": str(company).strip(),
+        }
+    return {}
 
 
 def _heading_matches(line: str, headings: tuple[str, ...]) -> bool:
@@ -245,8 +298,19 @@ def fetch_job_posting(url: str, timeout: int = 12) -> JobPosting:
     parser.feed(html)
     full_text = normalize_text("".join(parser.parts))
     main_text = normalize_text("".join(parser.main_parts))
+    structured_job = _extract_jobposting_jsonld(html)
+    structured_description = normalize_text(structured_job.get("description", ""))
+    metadata_description = normalize_text(
+        parser.meta.get("og:description", "")
+        or parser.meta.get("description", "")
+        or parser.meta.get("twitter:description", "")
+    )
     title = normalize_text(
-        parser.meta.get("og:title", "") or parser.job_heading or parser.title or parser.h1
+        structured_job.get("title", "")
+        or parser.meta.get("og:title", "")
+        or parser.job_heading
+        or parser.title
+        or parser.h1
     ) or "Untitled job posting"
     # Navigation, related jobs, and legal footers can contain many unrelated
     # keywords. Prefer semantic <main> content when it is substantial and
@@ -276,10 +340,21 @@ def fetch_job_posting(url: str, timeout: int = 12) -> JobPosting:
         and len(main_text) >= 180
         and any(marker in main_text.casefold() for marker in main_markers)
     )
-    text = main_text if use_main else full_text
+    if structured_description:
+        # JSON-LD is usually the canonical description on React/client-
+        # rendered career pages, where visible body text may be absent to
+        # urllib even though a browser can render it.
+        text = structured_description
+    elif use_main:
+        text = main_text
+    elif len(metadata_description) >= 180 and not full_text:
+        text = metadata_description
+    else:
+        text = full_text
     text = focus_job_content(text)
     company = (
-        normalize_text(parser.meta.get("og:site_name", ""))
+        structured_job.get("company", "")
+        or normalize_text(parser.meta.get("og:site_name", ""))
         or _company_from_title(title)
         or _company_from_url(url)
     )
