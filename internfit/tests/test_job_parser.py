@@ -117,3 +117,24 @@ class JobParserTests(unittest.TestCase):
         self.assertIn("MS or PhD", posting.text)
         self.assertNotIn("unrelated robotics", posting.text)
         self.assertNotIn("Company marketing", posting.text)
+
+    def test_uses_jobposting_jsonld_for_client_rendered_pages(self):
+        html = """
+        <html><head>
+        <script type="application/ld+json">
+        {"@type":"JobPosting","title":"AI Integration Intern","description":"Company Overview\\nUnrelated marketing.\\nRole Overview\\nBuild an MCP server.\\nMinimum Qualification:\\nCurrently enrolled in a MS or PhD degree program in computer science.","hiringOrganization":{"@type":"Organization","name":"Example"}}
+        </script>
+        </head><body><div id="app"></div></body></html>
+        """
+        with NamedTemporaryFile(mode="w", suffix=".html", delete=False) as file:
+            file.write(html)
+            path = Path(file.name)
+        try:
+            posting = fetch_job_posting(path.as_uri())
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertEqual(posting.title, "AI Integration Intern")
+        self.assertEqual(posting.company, "Example")
+        self.assertIn("Build an MCP server", posting.text)
+        self.assertIn("Minimum Qualification", posting.text)
+        self.assertNotIn("Unrelated marketing", posting.text)
