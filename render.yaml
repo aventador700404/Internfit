@@ -1,9 +1,9 @@
 services:
   - type: web
     name: internfit
-    runtime: python
+    runtime: docker
     region: singapore
     plan: free
-    buildCommand: apt-get update -qq && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-kor && pip install -r internfit_web/requirements.txt
-    startCommand: python internfit_web/server.py
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     healthCheckPath: /health
