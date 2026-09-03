@@ -12,6 +12,52 @@ from urllib.parse import urlparse
 
 IGNORED_TAGS = {"script", "style", "noscript", "template", "svg", "canvas"}
 
+# Career pages frequently place the actual role beside company marketing,
+# related jobs, and legal copy. These headings are useful across career-site
+# vendors and let the scorer focus on role-specific content.
+JOB_CONTENT_HEADINGS = (
+    "role overview",
+    "job overview",
+    "about the role",
+    "the opportunity",
+    "responsibilities",
+    "job responsibilities",
+    "what you'll do",
+    "what you will do",
+    "what we're looking for",
+    "what we are looking for",
+    "minimum qualification",
+    "minimum qualifications",
+    "basic qualification",
+    "basic qualifications",
+    "required qualification",
+    "required qualifications",
+    "preferred qualification",
+    "preferred qualifications",
+    "requirements",
+    "qualifications",
+    "skills",
+)
+
+JOB_FOOTER_HEADINGS = (
+    "about the company",
+    "company overview",
+    "about qualcomm",
+    "qualcomm overview",
+    "join us",
+    "our culture",
+    "benefits",
+    "perks",
+    "similar jobs",
+    "similar positions",
+    "equal employment",
+    "equal opportunity",
+    "privacy",
+    "accessibility",
+    "share this job",
+    "apply now",
+)
+
 
 class _TextExtractor(HTMLParser):
     def __init__(self) -> None:
@@ -105,6 +151,47 @@ def normalize_text(text: str) -> str:
     return text.strip()
 
 
+def _heading_matches(line: str, headings: tuple[str, ...]) -> bool:
+    """Match a section heading without treating a normal sentence as one."""
+    lowered = normalize_text(line).casefold().strip(" :–—-")
+    if not lowered or len(lowered) > 90:
+        return False
+    return any(
+        lowered == heading
+        or lowered.startswith(f"{heading}:")
+        for heading in headings
+    )
+
+
+def focus_job_content(text: str) -> str:
+    """Remove common career-page boilerplate while preserving role sections.
+
+    If a page has recognizable job-section headings, keep content from the
+    first such heading until the company/footer sections begin. Pages without
+    those headings are returned unchanged so unusual job boards still work.
+    """
+    lines = [normalize_text(line) for line in text.splitlines() if normalize_text(line)]
+    if not lines:
+        return text
+
+    start_index = next(
+        (index for index, line in enumerate(lines) if _heading_matches(line, JOB_CONTENT_HEADINGS)),
+        None,
+    )
+    if start_index is None:
+        return text
+
+    focused: list[str] = []
+    for line in lines[start_index:]:
+        if focused and _heading_matches(line, JOB_FOOTER_HEADINGS):
+            break
+        focused.append(line)
+
+    result = normalize_text("\n".join(focused))
+    # A false-positive heading should not discard a substantial description.
+    return result if len(result) >= 120 else text
+
+
 def _company_from_title(title: str) -> str:
     """Infer a company label from common career-page title formats."""
     for separator in ("|", " — ", " – ", " - "):
@@ -190,6 +277,7 @@ def fetch_job_posting(url: str, timeout: int = 12) -> JobPosting:
         and any(marker in main_text.casefold() for marker in main_markers)
     )
     text = main_text if use_main else full_text
+    text = focus_job_content(text)
     company = (
         normalize_text(parser.meta.get("og:site_name", ""))
         or _company_from_title(title)
