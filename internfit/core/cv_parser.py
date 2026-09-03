@@ -10,6 +10,11 @@ import re
 from docx import Document
 from pypdf import PdfReader
 
+try:
+    from pdfminer.high_level import extract_text as _extract_pdfminer_text
+except ImportError:  # pragma: no cover - production dependencies include pdfminer.six
+    _extract_pdfminer_text = None
+
 
 EVIDENCE_RULES = {
     "strategy": (
@@ -146,9 +151,42 @@ def extract_pdf_bytes(data: bytes) -> list[str]:
         for page in reader.pages:
             text = page.extract_text() or ""
             lines.extend(line.strip() for line in text.splitlines() if line.strip())
-        return lines
+        pypdf_text = "\n".join(lines)
+        candidates = [pypdf_text]
+        # Some Korean PDFs have a valid text layer but a font encoding that
+        # pypdf cannot map back to Unicode. Try pdfminer in that case; this is
+        # still text extraction, not OCR, and the uploaded bytes stay in memory.
+        if _extract_pdfminer_text is not None and (
+            not _pdf_text_is_usable(pypdf_text) or _hangul_count(pypdf_text) == 0
+        ):
+            try:
+                candidates.append(_extract_pdfminer_text(BytesIO(data)) or "")
+            except Exception:
+                pass
+        best_text = max(candidates, key=_pdf_text_quality)
+        if not _pdf_text_is_usable(best_text):
+            return []
+        return [line.strip() for line in best_text.splitlines() if line.strip()]
     except Exception as exc:
         raise ValueError("Could not read this PDF. Please upload a text-based PDF.") from exc
+
+
+def _hangul_count(text: str) -> int:
+    return sum("가" <= character <= "힣" for character in text)
+
+
+def _pdf_text_quality(text: str) -> int:
+    visible = [character for character in text if not character.isspace()]
+    replacements = text.count("�")
+    controls = sum(character.isprintable() is False for character in visible)
+    return len(visible) + (_hangul_count(text) * 3) - (replacements * 20) - (controls * 10)
+
+
+def _pdf_text_is_usable(text: str) -> bool:
+    visible = [character for character in text if not character.isspace()]
+    alphanumeric = sum(character.isalnum() for character in visible)
+    replacements = text.count("�")
+    return len(visible) >= 8 and alphanumeric >= 4 and replacements <= max(2, len(visible) // 100)
 
 
 def parse_pdf_bytes(data: bytes, source_name: str = "uploaded_cv.pdf") -> CandidateProfile:
