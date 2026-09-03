@@ -98,6 +98,22 @@ SPECIFIC_DOMAIN_PENALTIES = {
     "sales": 3,
 }
 
+STRICT_DOMAIN_TAGS = {
+    "strategy",
+    "operations",
+    "technology",
+    "finance",
+    "marketing",
+    "sales",
+    "capital_markets",
+    "market_monitoring",
+    "accounting",
+    "software_engineering",
+    "robotics_data",
+    "financial_modeling",
+    "due_diligence",
+}
+
 TAG_LABELS = {
     "strategy": "strategy and planning",
     "research": "market and company research",
@@ -120,24 +136,24 @@ TAG_LABELS = {
 }
 
 EXPLANATION_TEMPLATES = {
-    "strategy": "Your strategy experience ({snippet}) maps to this role's planning and decision work.",
-    "research": "Your research track record ({snippet}) matches the posting's market and company-analysis work.",
-    "operations": "Your operations experience ({snippet}) supports the role's execution and coordination needs.",
-    "stakeholder": "Your stakeholder work ({snippet}) fits the role's collaboration and communication demands.",
-    "data_analysis": "Your analytical evidence ({snippet}) supports the role's data-driven work.",
-    "technology": "Your technology exposure ({snippet}) connects to the role's digital or technology scope.",
-    "finance": "Your finance-related evidence ({snippet}) is relevant to the role's financial work.",
-    "event_management": "Your program-delivery experience ({snippet}) matches the role's event or coordination work.",
-    "marketing": "Your marketing experience ({snippet}) supports the role's brand and customer-facing work.",
-    "sales": "Your commercial experience ({snippet}) maps to the role's sales or business-development work.",
-    "software_engineering": "Your programming evidence ({snippet}) is relevant to the role's engineering scope.",
-    "accounting": "Your accounting evidence ({snippet}) maps to the role's controls and reporting work.",
-    "capital_markets": "Your capital-markets evidence ({snippet}) matches the role's transaction and funding work.",
-    "market_monitoring": "Your market-monitoring evidence ({snippet}) supports the role's financial-market work.",
-    "pitch_materials": "Your presentation work ({snippet}) is relevant to the role's pitch and client-material needs.",
-    "robotics_data": "Your robotics/data evidence ({snippet}) connects to the role's technical data-collection work.",
-    "financial_modeling": "Your modeling evidence ({snippet}) is relevant to the role's valuation and financial-model work.",
-    "due_diligence": "Your diligence experience ({snippet}) supports the role's transaction-review work.",
+    "strategy": "Planning fit: {snippet} — relevant to the role's strategy and decision work.",
+    "research": "Research overlap: {snippet} — supports the posting's market or company-analysis needs.",
+    "operations": "Execution evidence: {snippet} — relevant to this role's process and delivery work.",
+    "stakeholder": "Collaboration evidence: {snippet} — maps to the role's stakeholder-facing work.",
+    "data_analysis": "Analytical evidence: {snippet} — supports the posting's data-driven tasks.",
+    "technology": "Technology overlap: {snippet} — connects to the role's digital or systems scope.",
+    "finance": "Finance relevance: {snippet} — gives the application a basis for the role's financial work.",
+    "event_management": "Program-delivery evidence: {snippet} — matches the role's event or coordination needs.",
+    "marketing": "Marketing overlap: {snippet} — supports the role's brand or customer-facing work.",
+    "sales": "Commercial evidence: {snippet} — relates to the role's sales or business-development goals.",
+    "software_engineering": "Engineering proof: {snippet} — relevant to the role's software-development scope.",
+    "accounting": "Accounting proof: {snippet} — maps to the role's controls and reporting work.",
+    "capital_markets": "Transaction relevance: {snippet} — connects to the role's funding and markets work.",
+    "market_monitoring": "Markets overlap: {snippet} — supports the posting's monitoring and analysis tasks.",
+    "pitch_materials": "Presentation proof: {snippet} — relevant to the role's pitch and client-material needs.",
+    "robotics_data": "Technical-data overlap: {snippet} — connects to the role's robotics and collection work.",
+    "financial_modeling": "Modeling relevance: {snippet} — supports the posting's valuation or forecast work.",
+    "due_diligence": "Diligence overlap: {snippet} — relevant to the role's transaction-review needs.",
 }
 
 GAP_GUIDANCE = {
@@ -180,13 +196,48 @@ LANGUAGE_GAP_GUIDANCE = {
 
 METADATA_PREFIXES = (
     "profile",
+    "summary:",
+    "professional summary:",
     "academic focus:",
+    "skills:",
+    "technical skills:",
+    "core competencies:",
     "tools:",
     "certifications:",
     "languages:",
     "research & business skills:",
     "selected analytical methods:",
     "interests:",
+)
+
+OPTIONAL_CUES = (
+    "preferred",
+    "preferably",
+    "nice to have",
+    "nice-to-have",
+    "a plus",
+    "bonus",
+    "advantage",
+    "desired",
+    "ideally",
+    "not required",
+    "optional",
+)
+
+REQUIRED_CUES = (
+    "required",
+    "must",
+    "minimum",
+    "need to",
+    "you have",
+    "requirements",
+    "qualifications",
+    "proficient",
+    "proficiency",
+    "fluent",
+    "strong command",
+    "ability to",
+    "you will",
 )
 
 
@@ -224,6 +275,39 @@ def _contains_term(text: str, term: str) -> bool:
     """Match a whole word/phrase so short terms do not hit substrings."""
     escaped = re.escape(term.lower().strip()).replace(r"\ ", r"\s+")
     return bool(re.search(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", text))
+
+
+def _mention_contexts(text: str, terms: Iterable[str], window: int = 180) -> list[str]:
+    lowered = text.casefold()
+    contexts: list[str] = []
+    for term in terms:
+        escaped = re.escape(term.casefold().strip()).replace(r"\ ", r"\s+")
+        for match in re.finditer(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", lowered):
+            start = max(0, match.start() - window)
+            end = min(len(lowered), match.end() + window)
+            contexts.append(lowered[start:end])
+    return contexts
+
+
+def _is_required_mention(text: str, terms: Iterable[str]) -> bool:
+    contexts = _mention_contexts(text, terms)
+    if not contexts:
+        return False
+    for context in contexts:
+        if any(cue in context for cue in OPTIONAL_CUES):
+            continue
+        if any(cue in context for cue in REQUIRED_CUES):
+            return True
+    return False
+
+
+def _required_tags(text: str, patterns: dict[str, tuple[str, ...]]) -> set[str]:
+    present = _present_tags(text, patterns)
+    return {
+        tag
+        for tag in present
+        if _is_required_mention(text, patterns[tag])
+    }
 
 
 def _score_coverage(required: set[str], candidate: set[str], weight: int) -> int:
@@ -310,12 +394,20 @@ def _evidence_score(candidate: CandidateProfile) -> int:
         for line in lines
         if not _is_metadata_line(line)
     }
+    direct_tags = {
+        tag
+        for tag, lines in candidate.evidence.items()
+        if any(not _is_metadata_line(line) for line in lines)
+    }
     count = len(direct_lines)
-    if count >= 10:
+    breadth = len(direct_tags)
+    # Do not let a long CV earn a perfect evidence score from repeated bullets
+    # in one area. Breadth and distinct proof both matter.
+    if count >= 10 and breadth >= 5:
         return 10
-    if count >= 6:
+    if count >= 6 and breadth >= 3:
         return 8
-    if count >= 3:
+    if count >= 3 and breadth >= 2:
         return 6
     if count:
         return 4
@@ -351,11 +443,14 @@ def _infer_core_checks(text: str, required_languages: set[str], specification: d
     if "core_checks" in specification:
         return set(specification["core_checks"] or set())
     checks: set[str] = set()
-    if "english" in required_languages or _contains_term(text, "english"):
+    if "english" in required_languages or _is_required_mention(text, LANGUAGE_PATTERNS["english"]):
         checks.add("english")
     if any(_contains_term(text, phrase) for phrase in ("intern", "undergraduate", "student", "graduating")):
         checks.add("student")
-    if any(_contains_term(text, phrase) for phrase in ("business administration", "business degree", "business major")):
+    if any(
+        _is_required_mention(text, (phrase,))
+        for phrase in ("business administration", "business degree", "business major")
+    ):
         checks.add("business_degree")
     return checks
 
@@ -377,7 +472,7 @@ def _recommendation(score: int, blockers: Iterable[str], penalty_points: int = 0
         return "Hold — eligibility gap"
     if score >= 85:
         return "Apply now"
-    if score >= 65 or (score >= 50 and penalty_points <= 8):
+    if score >= 65:
         return "Apply after targeted CV edits"
     return "Lower priority"
 
@@ -419,7 +514,11 @@ def _best_evidence_line(
 ) -> str | None:
     lines = _unique_lines(candidate.evidence.get(tag, []))
     used = used or set()
-    available = [line for line in lines if line.casefold() not in used]
+    available = [
+        line
+        for line in lines
+        if line.casefold() not in used and not _is_metadata_line(line)
+    ]
     if not available:
         return None
     job_words = set(re.findall(r"[a-z]{4,}", job_text.casefold())) - STOPWORDS
@@ -474,7 +573,7 @@ def _build_gap_details(
         detail = GAP_GUIDANCE.get(key)
         if not detail:
             label = TAG_LABELS.get(key, key.replace("_", " "))
-            detail = f"Add one bullet proving {label} with a specific action, tool, and result."
+            detail = f"Evidence gap: {label}. Add one CV bullet with a specific action, tool, and result."
         if detail.casefold() not in seen:
             seen.add(detail.casefold())
             details.append(detail)
@@ -532,18 +631,51 @@ def _specificity_penalties(
     return points, reasons
 
 
+def _domain_score_cap(
+    candidate: CandidateProfile,
+    domain_tags: set[str],
+) -> tuple[int | None, str | None]:
+    strict_tags = sorted(domain_tags & STRICT_DOMAIN_TAGS)
+    missing = [
+        tag
+        for tag in strict_tags
+        if _candidate_tag_strength(candidate, tag) == 0
+    ]
+    if not missing:
+        return None, None
+    supporting = [
+        tag
+        for tag in strict_tags
+        if _candidate_tag_strength(candidate, tag) == 1
+    ]
+    if len(missing) >= 2:
+        cap = 64
+    elif supporting:
+        cap = 78
+    else:
+        cap = 72
+    labels = ", ".join(TAG_LABELS.get(tag, tag) for tag in missing)
+    return cap, f"Missing direct role-specific evidence ({labels}); score capped at {cap}."
+
+
 def assess_fit(candidate: CandidateProfile, job: JobPosting) -> FitResult:
     text = job.text.lower()
     job_tags = _present_tags(text, TAG_PATTERNS)
     candidate_tags = candidate.evidence_tags
-    all_tools = _present_tags(text, TOOL_PATTERNS)
-    required_languages = _present_tags(text, LANGUAGE_PATTERNS)
     specification = job.requirements or {}
 
     responsibility_tags = set(specification.get("responsibility_tags", job_tags))
     domain_tags = set(specification.get("domain_tags", job_tags & DOMAIN_TAGS))
-    required_tools = set(specification.get("required_tools", all_tools))
-    required_languages = set(specification.get("required_languages", required_languages))
+    required_tools = (
+        set(specification["required_tools"])
+        if "required_tools" in specification
+        else _required_tags(text, TOOL_PATTERNS)
+    )
+    required_languages = (
+        set(specification["required_languages"])
+        if "required_languages" in specification
+        else _required_tags(text, LANGUAGE_PATTERNS)
+    )
     core_checks = _infer_core_checks(text, required_languages, specification)
 
     # Explicit degree requirements are checked separately so a preferred
@@ -571,16 +703,30 @@ def assess_fit(candidate: CandidateProfile, job: JobPosting) -> FitResult:
 
     penalty_points, penalty_reasons = _specificity_penalties(candidate, domain_tags, text)
     score = max(0, min(95, sum(breakdown.values()) - penalty_points))
+    domain_cap, domain_cap_reason = _domain_score_cap(candidate, domain_tags)
+    if domain_cap is not None and score > domain_cap:
+        penalty_points += score - domain_cap
+        score = domain_cap
+        if domain_cap_reason:
+            penalty_reasons.append(domain_cap_reason)
     if blockers:
         # Eligibility is a separate gate: a strong-looking keyword match must
         # not wash out an explicit language requirement.
         score = min(score, 55)
 
-    strengths_set = responsibility_tags & candidate_tags
+    strengths_set = {
+        tag
+        for tag in responsibility_tags
+        if tag in candidate_tags and _candidate_tag_strength(candidate, tag) > 0
+    }
     strength_list = _ordered_tags(strengths_set, candidate)
+    evidenced_tags = {
+        tag
+        for tag in responsibility_tags | domain_tags
+        if _candidate_tag_strength(candidate, tag) == 2
+    }
     gap_tags = sorted(
-        (responsibility_tags - candidate_tags)
-        | (domain_tags - candidate_tags)
+        (responsibility_tags | domain_tags) - evidenced_tags
         | (required_tools - candidate.tools)
     )
     gaps = list(gap_tags)
