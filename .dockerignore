@@ -1,0 +1,14 @@
+.git
+.env
+.env.*
+__pycache__/
+*.py[cod]
+*.log
+*.zip
+*.pdf
+*.docx
+*.png
+.DS_Store
+.vscode/
+.idea/
+tests/
