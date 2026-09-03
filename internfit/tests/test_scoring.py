@@ -1,8 +1,9 @@
 import unittest
 
-from core.cv_parser import CandidateProfile
+from core.cv_parser import CandidateProfile, _profile_from_lines
 from core.sample_jobs import SAMPLE_JOBS
-from core.scoring import assess_fit
+from core.job_parser import JobPosting
+from core.scoring import _domain_score_cap, assess_fit
 
 
 class FitScoringTests(unittest.TestCase):
@@ -32,7 +33,7 @@ class FitScoringTests(unittest.TestCase):
         ing = assess_fit(self.candidate, SAMPLE_JOBS["ING — Debt Capital Markets Intern (mid-fit expected)"])
         self.assertGreater(sap.score, ing.score)
         self.assertEqual(sap.eligibility, "Pass")
-        self.assertEqual(ing.recommendation, "Apply after targeted CV edits")
+        self.assertEqual(ing.recommendation, "Lower priority")
 
     def test_japanese_requirement_is_a_blocker(self):
         result = assess_fit(self.candidate, SAMPLE_JOBS["RLWRLD — AI & Robotics Strategy Intern, Japanese (eligibility fail expected)"])
@@ -63,6 +64,29 @@ class FitScoringTests(unittest.TestCase):
         result = assess_fit(self.candidate, job)
         self.assertLess(result.score, 60)
         self.assertTrue(any("robotics" in detail for detail in result.gap_details))
+
+    def test_missing_role_specific_domain_is_capped(self):
+        job = JobPosting(
+            title="Software Engineering Intern",
+            company="Example",
+            url="",
+            text=(
+                "Build backend APIs and write production Python. "
+                "Requirements: computer science degree and software engineering experience."
+            ),
+        )
+        result = assess_fit(self.candidate, job)
+        self.assertLessEqual(result.score, 72)
+        cap, reason = _domain_score_cap(self.candidate, {"software_engineering"})
+        self.assertEqual(cap, 72)
+        self.assertIn("software engineering", reason)
+
+    def test_graduation_detection_is_not_bba_specific(self):
+        candidate = _profile_from_lines(
+            ["Bachelor of Arts Candidate, Class of 2027", "Example University"],
+            "friend.docx",
+        )
+        self.assertEqual(candidate.graduation, "Bachelor of Arts Candidate, Class of 2027")
 
 
 if __name__ == "__main__":
