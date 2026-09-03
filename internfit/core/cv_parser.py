@@ -3,12 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from io import BytesIO
+import subprocess
 from typing import BinaryIO
 from typing import Iterable
 import re
 
 from docx import Document
 from pypdf import PdfReader
+try:
+    import fitz
+except ImportError:  # pragma: no cover - production dependencies include PyMuPDF
+    fitz = None
 
 try:
     from pdfminer.high_level import extract_text as _extract_pdfminer_text
@@ -163,6 +168,8 @@ def extract_pdf_bytes(data: bytes) -> list[str]:
                 candidates.append(_extract_pdfminer_text(BytesIO(data)) or "")
             except Exception:
                 pass
+        if not _pdf_text_is_usable(max(candidates, key=_pdf_text_quality)):
+            candidates.append(_extract_pdf_with_ocr(data))
         best_text = max(candidates, key=_pdf_text_quality)
         if not _pdf_text_is_usable(best_text):
             return []
@@ -187,6 +194,36 @@ def _pdf_text_is_usable(text: str) -> bool:
     alphanumeric = sum(character.isalnum() for character in visible)
     replacements = text.count("�")
     return len(visible) >= 8 and alphanumeric >= 4 and replacements <= max(2, len(visible) // 100)
+
+
+def _extract_pdf_with_ocr(data: bytes) -> str:
+    """OCR image-only PDFs with Korean and English trained data.
+
+    Pages are rendered and piped directly to Tesseract; no uploaded PDF or
+    rendered page is persisted. If the server lacks Tesseract or the Korean
+    trained data, this returns an empty string and the normal read-failure
+    message is used.
+    """
+    if fitz is None:
+        return ""
+    try:
+        document = fitz.open(stream=data, filetype="pdf")
+        page_text: list[str] = []
+        for page in document:
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+            result = subprocess.run(
+                ["tesseract", "stdin", "stdout", "-l", "kor+eng", "--psm", "3"],
+                input=pixmap.tobytes("png"),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+                timeout=30,
+            )
+            if result.returncode == 0:
+                page_text.append(result.stdout.decode("utf-8", errors="replace"))
+        return "\n".join(page_text)
+    except (OSError, RuntimeError, subprocess.SubprocessError):
+        return ""
 
 
 def parse_pdf_bytes(data: bytes, source_name: str = "uploaded_cv.pdf") -> CandidateProfile:
