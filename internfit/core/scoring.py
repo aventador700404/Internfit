@@ -274,7 +274,7 @@ def _present_tags(text: str, patterns: dict[str, tuple[str, ...]]) -> set[str]:
 def _contains_term(text: str, term: str) -> bool:
     """Match a whole word/phrase so short terms do not hit substrings."""
     escaped = re.escape(term.lower().strip()).replace(r"\ ", r"\s+")
-    return bool(re.search(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", text))
+    return bool(re.search(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", text.casefold()))
 
 
 def _mention_contexts(text: str, terms: Iterable[str], window: int = 180) -> list[str]:
@@ -414,10 +414,49 @@ def _evidence_score(candidate: CandidateProfile) -> int:
     return 2
 
 
+def _has_business_degree(candidate: CandidateProfile) -> bool:
+    degree_markers = (
+        "b.b.a",
+        "bba",
+        "bachelor",
+        "bachelor's",
+        "b.a.",
+        "b.s.",
+        "bsc",
+        "mba",
+        "master",
+        "m.a.",
+        "m.s.",
+        "msc",
+        "degree",
+        "major",
+        "candidate",
+        "university",
+        "college",
+    )
+    business_fields = (
+        "business administration",
+        "business management",
+        "business analytics",
+        "management",
+        "commerce",
+        "economics",
+        "finance",
+        "marketing",
+        "b.b.a",
+        "bba",
+    )
+    return any(
+        any(_contains_term(line, marker) for marker in degree_markers)
+        and any(_contains_term(line, field) for field in business_fields)
+        for line in candidate.raw_text.splitlines()
+    )
+
+
 def _passed_core_checks(candidate: CandidateProfile, checks: set[str]) -> set[str]:
     passed: set[str] = set()
     lowered = candidate.raw_text.lower()
-    if "business_degree" in checks and "b.b.a" in lowered:
+    if "business_degree" in checks and _has_business_degree(candidate):
         passed.add("business_degree")
     if "english" in checks and "english" in candidate.languages:
         passed.add("english")
