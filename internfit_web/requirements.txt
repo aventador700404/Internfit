@@ -1,3 +1,4 @@
 python-docx>=1.1,<2
 pypdf>=5,<7
 pdfminer.six>=20231228,<20270000
+PyMuPDF>=1.24,<2
