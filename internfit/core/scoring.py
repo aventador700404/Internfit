@@ -5,7 +5,12 @@ from typing import Iterable
 import re
 
 from .cv_parser import CandidateProfile
-from .job_parser import JobPosting, focus_job_content
+from .job_parser import (
+    JOB_CONTENT_HEADINGS,
+    JOB_FOOTER_HEADINGS,
+    JobPosting,
+    focus_job_content,
+)
 
 
 TAG_PATTERNS = {
@@ -232,6 +237,19 @@ OPTIONAL_CUES = (
     "optional",
 )
 
+PREFERRED_SECTION_HEADINGS = (
+    "preferred qualification",
+    "preferred qualifications",
+    "nice to have",
+    "nice-to-have",
+    "desired qualification",
+    "desired qualifications",
+    "bonus qualification",
+    "bonus qualifications",
+    "additional qualification",
+    "additional qualifications",
+)
+
 REQUIRED_CUES = (
     "required",
     "must",
@@ -254,6 +272,7 @@ class FitResult:
     score: int
     grade: str
     recommendation: str
+    decision: str
     eligibility: str
     blockers: list[str]
     strengths: list[str]
@@ -264,6 +283,52 @@ class FitResult:
     gap_details: list[str] = field(default_factory=list)
     penalty_points: int = 0
     penalty_reasons: list[str] = field(default_factory=list)
+
+
+def _heading_matches(line: str, headings: tuple[str, ...]) -> bool:
+    """Match a short section heading without treating a sentence as one."""
+    lowered = _normalise_line(line).casefold().strip(" :–—-")
+    if not lowered or len(lowered) > 90:
+        return False
+    return any(
+        lowered == heading
+        or lowered.startswith(f"{heading}:")
+        for heading in headings
+    )
+
+
+def _split_preferred_text(text: str) -> tuple[str, str]:
+    """Keep preferred-only lines out of required/core scoring signals."""
+    lines = [_normalise_line(line) for line in text.splitlines() if _normalise_line(line)]
+    if not lines:
+        return text, ""
+
+    core: list[str] = []
+    preferred: list[str] = []
+    in_preferred = False
+    for line in lines:
+        if preferred and _heading_matches(line, JOB_FOOTER_HEADINGS):
+            break
+        if _heading_matches(line, PREFERRED_SECTION_HEADINGS):
+            in_preferred = True
+            preferred.append(line)
+            continue
+        if _heading_matches(line, JOB_CONTENT_HEADINGS):
+            in_preferred = False
+
+        if in_preferred:
+            preferred.append(line)
+            continue
+
+        lowered = line.casefold()
+        has_optional_cue = any(cue in lowered for cue in OPTIONAL_CUES)
+        has_required_cue = any(cue in lowered for cue in REQUIRED_CUES)
+        if has_optional_cue and not has_required_cue:
+            preferred.append(line)
+        else:
+            core.append(line)
+
+    return "\n".join(core), "\n".join(preferred)
 
 
 def _present_tags(text: str, patterns: dict[str, tuple[str, ...]]) -> set[str]:
@@ -329,6 +394,27 @@ def _set_coverage(required: set[str], candidate: set[str], weight: int) -> int:
     if not required:
         return weight // 2
     return round(weight * len(required & candidate) / len(required))
+
+
+def _preferred_alignment_bonus(
+    candidate: CandidateProfile,
+    preferred_tags: set[str],
+    preferred_tools: set[str],
+    preferred_languages: set[str],
+) -> int:
+    """Reward explicit preferred-fit evidence without letting it dominate.
+
+    Preferred qualifications are a differentiator, not a substitute for a
+    required qualification. The entire bonus is deliberately capped at five
+    points so a long preferred section cannot inflate a weak application.
+    """
+    points = 0.0
+    for tag in preferred_tags:
+        strength = _candidate_tag_strength(candidate, tag)
+        points += {0: 0.0, 1: 0.75, 2: 1.5}.get(strength, 0.0)
+    points += 0.75 * len(preferred_tools & candidate.tools)
+    points += 1.5 * len(preferred_languages & candidate.languages)
+    return min(5, round(points))
 
 
 def _normalise_line(line: str) -> str:
@@ -603,6 +689,17 @@ def _recommendation(score: int, blockers: Iterable[str], penalty_points: int = 0
     return "Lower priority"
 
 
+def _decision(score: int, blockers: Iterable[str]) -> str:
+    """Map the internal score to a simple application-priority label."""
+    if blockers or score < 40:
+        return "Skip"
+    if score >= 85:
+        return "Apply now"
+    if score >= 65:
+        return "Apply after CV edits"
+    return "Low probability"
+
+
 def _shorten(text: str, limit: int = 175) -> str:
     clean = _normalise_line(text).strip(" .")
     if len(clean) <= limit:
@@ -791,13 +888,25 @@ def assess_fit(candidate: CandidateProfile, job: JobPosting) -> FitResult:
     # The title is usually the cleanest role signal; the body is cleaned by
     # the job parser before it reaches this function.
     focused_body = focus_job_content(job.text)
-    text = "\n".join(part for part in (job.title, focused_body) if part).casefold()
+    core_body, preferred_body = _split_preferred_text(focused_body)
+    text = "\n".join(part for part in (job.title, core_body) if part).casefold()
+    preferred_text = preferred_body.casefold()
     job_tags = _present_tags(text, TAG_PATTERNS)
     candidate_tags = candidate.evidence_tags
     specification = job.requirements or {}
 
     responsibility_tags = set(specification.get("responsibility_tags", job_tags))
     domain_tags = set(specification.get("domain_tags", job_tags & DOMAIN_TAGS))
+    preferred_tags = set(specification.get("preferred_tags", _present_tags(preferred_text, TAG_PATTERNS)))
+    preferred_domain_tags = set(
+        specification.get("preferred_domain_tags", preferred_tags & DOMAIN_TAGS)
+    )
+    preferred_tools = set(
+        specification.get("preferred_tools", _present_tags(preferred_text, TOOL_PATTERNS))
+    )
+    preferred_languages = set(
+        specification.get("preferred_languages", _present_tags(preferred_text, LANGUAGE_PATTERNS))
+    )
     required_tools = (
         set(specification["required_tools"])
         if "required_tools" in specification
@@ -833,12 +942,18 @@ def assess_fit(candidate: CandidateProfile, job: JobPosting) -> FitResult:
         "Role responsibilities": _weighted_coverage(responsibility_tags, candidate, 30),
         "Core qualifications": qualification_score,
         "Tools": _set_coverage(required_tools, candidate.tools, 15),
-        "Domain alignment": _weighted_coverage(domain_tags, candidate, 20),
+        "Domain alignment": _weighted_coverage(domain_tags, candidate, 15),
         "Evidence strength": _evidence_score(candidate),
+        "Preferred alignment": _preferred_alignment_bonus(
+            candidate,
+            preferred_domain_tags,
+            preferred_tools,
+            preferred_languages,
+        ),
     }
 
     penalty_points, penalty_reasons = _specificity_penalties(candidate, domain_tags, text)
-    score = max(0, min(95, sum(breakdown.values()) - penalty_points))
+    score = max(0, min(100, sum(breakdown.values()) - penalty_points))
     domain_cap, domain_cap_reason = _domain_score_cap(candidate, domain_tags)
     if domain_cap is not None and score > domain_cap:
         penalty_points += score - domain_cap
@@ -878,6 +993,7 @@ def assess_fit(candidate: CandidateProfile, job: JobPosting) -> FitResult:
         score=score,
         grade=_grade(score),
         recommendation=_recommendation(score, blockers, penalty_points),
+        decision=_decision(score, blockers),
         eligibility="Risk" if blockers else "Pass",
         blockers=blockers,
         strengths=strength_list,
