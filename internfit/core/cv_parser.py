@@ -26,6 +26,7 @@ EVIDENCE_RULES = {
     # candidate into a software engineer.  A real engineering signal should be
     # an engineering role, a programming deliverable, or a concrete stack.
     "software_engineering": ("software engineer", "software engineering", "backend", "frontend", "api", "programming language", "programming project", "software developer", "coding"),
+    "mcp_integration": ("mcp", "model context protocol", "rest api", "api integration", "mcp server", "mcp client"),
     "accounting": ("accounting", "audit", "journal entries", "reconciliation", "monthly close", "bookkeeping"),
 }
 
@@ -179,4 +180,3 @@ def _profile_from_lines(lines: list[str], source_name: str) -> CandidateProfile:
         graduation=graduation,
         education=education,
     )
-
