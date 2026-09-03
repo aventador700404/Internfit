@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from io import BytesIO
+from functools import lru_cache
+import shutil
 import subprocess
 from typing import BinaryIO
 from typing import Iterable
@@ -11,9 +13,18 @@ import re
 from docx import Document
 from pypdf import PdfReader
 try:
-    import fitz
+    import pymupdf as fitz
 except ImportError:  # pragma: no cover - production dependencies include PyMuPDF
-    fitz = None
+    try:
+        import fitz
+    except ImportError:  # pragma: no cover - production dependencies include PyMuPDF
+        fitz = None
+
+try:
+    from PIL import Image, ImageOps
+except ImportError:  # pragma: no cover - Pillow is installed in production
+    Image = None
+    ImageOps = None
 
 try:
     from pdfminer.high_level import extract_text as _extract_pdfminer_text
@@ -196,33 +207,182 @@ def _pdf_text_is_usable(text: str) -> bool:
     return len(visible) >= 8 and alphanumeric >= 4 and replacements <= max(2, len(visible) // 100)
 
 
+@lru_cache(maxsize=1)
+def _tesseract_languages(executable: str) -> frozenset[str]:
+    """Return installed Tesseract languages without exposing document text."""
+    try:
+        result = subprocess.run(
+            [executable, "--list-langs"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return frozenset()
+
+    languages = set()
+    for line in result.stdout.decode("utf-8", errors="replace").splitlines():
+        value = line.strip()
+        if re.fullmatch(r"[A-Za-z0-9_]+", value):
+            languages.add(value)
+    return frozenset(languages)
+
+
+def _ocr_language_candidates(executable: str) -> list[str]:
+    available = _tesseract_languages(executable)
+    candidates: list[str] = []
+    if {"kor", "eng"}.issubset(available):
+        candidates.append("kor+eng")
+    for language in ("kor", "eng"):
+        if language in available and language not in candidates:
+            candidates.append(language)
+    # Keep a useful fallback if the language probe itself was unavailable.
+    return candidates or ["kor+eng", "eng"]
+
+
+def _ocr_png_variants(pixmap) -> list[tuple[str, bytes]]:
+    """Create OCR-friendly variants while keeping all bytes in memory."""
+    original = pixmap.tobytes("png")
+    variants = [("original", original)]
+    if Image is None or ImageOps is None:
+        return variants
+
+    try:
+        with Image.open(BytesIO(original)) as source:
+            grayscale = ImageOps.autocontrast(source.convert("L"))
+            gray_buffer = BytesIO()
+            grayscale.save(gray_buffer, format="PNG", optimize=True)
+            variants.append(("gray", gray_buffer.getvalue()))
+
+            # Colored resume sidebars can hide white/yellow text from OCR.
+            # A high-contrast pass turns both the sidebar and white page into
+            # readable black/white text without saving an intermediate file.
+            binary = grayscale.point(lambda value: 255 if value >= 165 else 0)
+            binary_buffer = BytesIO()
+            binary.save(binary_buffer, format="PNG", optimize=True)
+            variants.append(("binary", binary_buffer.getvalue()))
+    except (OSError, ValueError):
+        pass
+    return variants
+
+
+def _run_tesseract(
+    executable: str,
+    image_bytes: bytes,
+    language: str,
+    psm: str,
+    page_number: int,
+    variant: str,
+) -> str:
+    try:
+        result = subprocess.run(
+            [
+                executable,
+                "stdin",
+                "stdout",
+                "-l",
+                language,
+                "--oem",
+                "1",
+                "--psm",
+                psm,
+                "--dpi",
+                "300",
+                "-c",
+                "preserve_interword_spaces=1",
+            ],
+            input=image_bytes,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=20,
+        )
+    except subprocess.TimeoutExpired:
+        print(
+            f"[InternFit] OCR timeout page={page_number} language={language} "
+            f"variant={variant} psm={psm}",
+            flush=True,
+        )
+        return ""
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(
+            f"[InternFit] OCR process error page={page_number} language={language} "
+            f"variant={variant} psm={psm} error={type(exc).__name__}",
+            flush=True,
+        )
+        return ""
+
+    text = result.stdout.decode("utf-8", errors="replace")
+    if result.returncode != 0 or not text.strip():
+        print(
+            f"[InternFit] OCR attempt page={page_number} language={language} "
+            f"variant={variant} psm={psm} rc={result.returncode} chars={len(text)}",
+            flush=True,
+        )
+    return text
+
+
 def _extract_pdf_with_ocr(data: bytes) -> str:
-    """OCR image-only PDFs with Korean and English trained data.
+    """OCR image-only PDFs with Korean/English fallback passes.
 
     Pages are rendered and piped directly to Tesseract; no uploaded PDF or
-    rendered page is persisted. If the server lacks Tesseract or the Korean
-    trained data, this returns an empty string and the normal read-failure
-    message is used.
+    rendered page is persisted. Several layout and contrast passes are used
+    because resumes often contain two columns, colored sidebars, or outlined
+    text rather than a selectable text layer.
     """
     if fitz is None:
         return ""
+    executable = shutil.which("tesseract")
+    if not executable:
+        print("[InternFit] OCR unavailable: tesseract executable not found", flush=True)
+        return ""
+
+    languages = _ocr_language_candidates(executable)
     try:
         document = fitz.open(stream=data, filetype="pdf")
         page_text: list[str] = []
-        for page in document:
-            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
-            result = subprocess.run(
-                ["tesseract", "stdin", "stdout", "-l", "kor+eng", "--psm", "3"],
-                input=pixmap.tobytes("png"),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
-                timeout=30,
+        for page_number, page in enumerate(document, start=1):
+            # 3x renders approximately 216 DPI for an A4 PDF and retains
+            # small Korean body text better than the previous 2x pass.
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(3, 3), alpha=False)
+            variants = dict(_ocr_png_variants(pixmap))
+            primary = languages[0]
+            attempts = (
+                ("original", "3"),
+                ("gray", "11"),
+                ("binary", "6"),
             )
-            if result.returncode == 0:
-                page_text.append(result.stdout.decode("utf-8", errors="replace"))
+            candidates: list[str] = []
+            for variant, psm in attempts:
+                image_bytes = variants.get(variant, variants["original"])
+                text = _run_tesseract(
+                    executable, image_bytes, primary, psm, page_number, variant
+                )
+                if text.strip():
+                    candidates.append(text)
+
+            best_page = max(candidates, key=_pdf_text_quality, default="")
+            # If the combined Korean+English model fails or returns no useful
+            # text, try the individual installed language models as a safety
+            # net. English-only text is still preferable to rejecting a CV.
+            if not _pdf_text_is_usable(best_page):
+                for language in languages[1:]:
+                    for variant, psm in (("binary", "11"), ("original", "6")):
+                        image_bytes = variants.get(variant, variants["original"])
+                        text = _run_tesseract(
+                            executable, image_bytes, language, psm, page_number, variant
+                        )
+                        if text.strip():
+                            candidates.append(text)
+                best_page = max(candidates, key=_pdf_text_quality, default="")
+
+            if best_page.strip():
+                page_text.append(best_page)
+        document.close()
         return "\n".join(page_text)
-    except (OSError, RuntimeError, subprocess.SubprocessError):
+    except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+        print(f"[InternFit] OCR document error type={type(exc).__name__}", flush=True)
         return ""
 
 
@@ -258,48 +418,3 @@ def parse_cv(file_path: str | Path) -> CandidateProfile:
 
 def parse_cv_bytes(data: bytes, source_name: str = "uploaded_cv.docx") -> CandidateProfile:
     return _profile_from_lines(extract_docx_bytes(data), source_name)
-
-
-def _profile_from_lines(lines: list[str], source_name: str) -> CandidateProfile:
-    raw_text = "\n".join(lines)
-    evidence = {tag: _matching_lines(lines, needles) for tag, needles in EVIDENCE_RULES.items()}
-    languages = {
-        language
-        for language, needles in LANGUAGE_RULES.items()
-        if any(_contains_term(raw_text, needle) for needle in needles)
-    }
-    tools = {
-        tool
-        for tool, needles in TOOL_RULES.items()
-        if any(_contains_term(raw_text, needle) for needle in needles)
-    }
-    graduation_patterns = (
-        r"\b(?:bachelor|master|ph\.?d|undergraduate|graduate)\s+(?:student|candidate)\b",
-        r"\b(?:candidate|student)\b.*(?:\b20\d{2}\b|\buniversity\b|\bcollege\b)",
-        r"\b(?:expected|anticipated)\s+(?:graduation|completion|to graduate)\b",
-        r"\bclass of\s+20\d{2}\b",
-        r"(?:졸업예정|재학)",
-    )
-    graduation = next(
-        (
-            line
-            for line in lines
-            if any(re.search(pattern, line, flags=re.IGNORECASE) for pattern in graduation_patterns)
-        ),
-        None,
-    )
-    education = [
-        line
-        for line in lines
-        if re.search(r"\b(?:university|college|school|institute)\b", line, flags=re.IGNORECASE)
-        or re.search(r"(?:대학교|대학|재학|학사|석사|박사|경영학|경제학|무역학|국제통상)", line)
-    ]
-    return CandidateProfile(
-        source_name=source_name,
-        raw_text=raw_text,
-        evidence=evidence,
-        languages=languages,
-        tools=tools,
-        graduation=graduation,
-        education=education,
-    )
