@@ -156,6 +156,16 @@ class KoreanSupportTests(unittest.TestCase):
 
         self.assertEqual(lines, korean_text.splitlines())
 
+    def test_ocr_fallback_runs_after_text_extractors_fail(self):
+        korean_text = "국문 이미지 이력서\n전략기획 및 시장조사 경험"
+        with patch("core.cv_parser.PdfReader", _FakePdfReader), patch(
+            "core.cv_parser._extract_pdfminer_text", return_value=""
+        ), patch("core.cv_parser._extract_pdf_with_ocr", return_value=korean_text) as ocr:
+            lines = extract_pdf_bytes(b"not-a-real-pdf")
+
+        ocr.assert_called_once()
+        self.assertEqual(lines, korean_text.splitlines())
+
 
 if __name__ == "__main__":
     unittest.main()
