@@ -102,6 +102,54 @@ class FitScoringTests(unittest.TestCase):
         result = assess_fit(candidate, job)
         self.assertNotIn("missing qualification: business_degree", result.gaps)
 
+    def test_minimum_graduate_technical_degree_is_a_hard_gate(self):
+        job = JobPosting(
+            title="AI Integration Intern",
+            company="Example",
+            url="",
+            text=(
+                "Role Overview\nBuild an MCP server and integrate tools.\n"
+                "Minimum Qualification\nCurrently enrolled in a MS or PhD degree program "
+                "in computer science, computer engineering, electrical engineering, or a related field.\n"
+                "Preferred Qualifications\nPython, REST API, LLM and MCP."
+            ),
+        )
+        result = assess_fit(self.candidate, job)
+        self.assertEqual(result.eligibility, "Risk")
+        self.assertIn("Required graduate technical degree missing", result.blockers)
+        self.assertLessEqual(result.score, 45)
+        self.assertIn("missing qualification: graduate_technical_degree", result.gaps)
+        self.assertTrue(any("minimum qualification" in detail for detail in result.gap_details))
+
+    def test_preferred_technical_degree_is_not_a_hard_gate(self):
+        candidate = _profile_from_lines(
+            ["B.B.A. Candidate, Class of 2027", "Example University"],
+            "friend.docx",
+        )
+        job = JobPosting(
+            title="Digital Intern",
+            company="Example",
+            url="",
+            text="Responsibilities: support digital projects. Preferred Qualifications: MS in computer science preferred.",
+        )
+        result = assess_fit(candidate, job)
+        self.assertEqual(result.eligibility, "Pass")
+        self.assertNotIn("Required graduate technical degree missing", result.blockers)
+
+    def test_graduate_technical_candidate_can_pass_degree_gate(self):
+        candidate = _profile_from_lines(
+            ["M.S. Computer Science, Currently enrolled, Class of 2027", "Example University"],
+            "technical_candidate.docx",
+        )
+        job = JobPosting(
+            title="AI Integration Intern",
+            company="Example",
+            url="",
+            text="Minimum Qualification: Currently enrolled in a MS or PhD degree program in computer science.",
+        )
+        result = assess_fit(candidate, job)
+        self.assertNotIn("Required graduate technical degree missing", result.blockers)
+
 
 if __name__ == "__main__":
     unittest.main()
