@@ -5,7 +5,7 @@ from typing import Iterable
 import re
 
 from .cv_parser import CandidateProfile
-from .job_parser import JobPosting
+from .job_parser import JobPosting, focus_job_content
 
 
 TAG_PATTERNS = {
@@ -30,6 +30,7 @@ TAG_PATTERNS = {
     "marketing": ("marketing", "social media", "campaign", "influencer", "content strategy", "brand"),
     "sales": ("business development", "lead generation", "account management", "sales growth", "sales target"),
     "software_engineering": ("software engineer", "software engineering", "backend", "frontend", "api", "programming language", "programming project", "developer", "coding"),
+    "mcp_integration": ("mcp", "model context protocol", "rest api", "api integration", "mcp server", "mcp client"),
     "accounting": ("accounting", "audit", "journal entries", "reconciliation", "monthly close", "bookkeeping"),
     "capital_markets": ("capital markets", "bond", "debt capital", "dc m"),
     "market_monitoring": ("market monitoring", "financial markets", "trading"),
@@ -83,6 +84,7 @@ DOMAIN_TAGS = {
     "due_diligence",
     "marketing",
     "sales",
+    "mcp_integration",
 }
 SPECIFIC_DOMAIN_PENALTIES = {
     "capital_markets": 8,
@@ -96,6 +98,7 @@ SPECIFIC_DOMAIN_PENALTIES = {
     "technology": 3,
     "marketing": 3,
     "sales": 3,
+    "mcp_integration": 12,
 }
 
 STRICT_DOMAIN_TAGS = {
@@ -112,6 +115,7 @@ STRICT_DOMAIN_TAGS = {
     "robotics_data",
     "financial_modeling",
     "due_diligence",
+    "mcp_integration",
 }
 
 TAG_LABELS = {
@@ -133,6 +137,7 @@ TAG_LABELS = {
     "robotics_data": "robotics and data-collection work",
     "financial_modeling": "financial modeling and valuation",
     "due_diligence": "due-diligence work",
+    "mcp_integration": "MCP and API integration",
 }
 
 EXPLANATION_TEMPLATES = {
@@ -154,6 +159,7 @@ EXPLANATION_TEMPLATES = {
     "robotics_data": "Technical-data overlap: {snippet} — connects to the role's robotics and collection work.",
     "financial_modeling": "Modeling relevance: {snippet} — supports the posting's valuation or forecast work.",
     "due_diligence": "Diligence overlap: {snippet} — relevant to the role's transaction-review needs.",
+    "mcp_integration": "Integration proof: {snippet} — relevant to the role's MCP/API integration scope.",
 }
 
 GAP_GUIDANCE = {
@@ -183,6 +189,8 @@ GAP_GUIDANCE = {
     "docker": "Name the project where you built or deployed a Docker image and why it was needed.",
     "accounting_degree": "The posting asks for accounting background; surface relevant coursework or accounting experience if you have it.",
     "computer_science_degree": "This posting prefers an engineering/CS degree; do not imply one—counterbalance it with a concrete programming project.",
+    "graduate_technical_degree": "This role's minimum qualification is a currently enrolled graduate degree in a technical field; a business bachelor's degree does not satisfy it.",
+    "mcp_integration": "Show a real MCP, REST API, server/client, or systems-integration deliverable; generic AI interest is not equivalent.",
     "business_degree": "Make the relevant degree and expected graduation date easy to find near the top.",
     "english": "State English proficiency and one example of working or presenting in English.",
     "student": "Show current enrollment and expected graduation date clearly.",
@@ -453,6 +461,75 @@ def _has_business_degree(candidate: CandidateProfile) -> bool:
     )
 
 
+GRADUATE_DEGREE_RE = re.compile(
+    r"(?<![a-z0-9])(?:ms|m\.s\.|master(?:'s)?|ph\.?d\.?|doctoral)(?![a-z0-9])",
+    re.IGNORECASE,
+)
+TECHNICAL_DEGREE_RE = re.compile(
+    r"\b(?:computer science|computer engineering|electrical engineering|software engineering)\b",
+    re.IGNORECASE,
+)
+
+
+def _has_required_graduate_technical_degree(text: str) -> bool:
+    """Detect an explicit minimum/current graduate technical-degree gate."""
+    segments = [segment.strip() for segment in re.split(r"\n|(?<=[.!?])\s+", text) if segment.strip()]
+    for index, segment in enumerate(segments):
+        context = " ".join(segments[max(0, index - 1): index + 2]).casefold()
+        if not GRADUATE_DEGREE_RE.search(context) or not TECHNICAL_DEGREE_RE.search(context):
+            continue
+        hard_signal = any(
+            cue in context
+            for cue in (
+                "minimum qualification",
+                "minimum qualifications",
+                "basic qualification",
+                "basic qualifications",
+                "required qualification",
+                "required qualifications",
+                "currently enrolled",
+                "must be enrolled",
+                "degree program",
+            )
+        )
+        optional_only = any(cue in context for cue in OPTIONAL_CUES) and not any(
+            cue in context
+            for cue in (
+                "minimum",
+                "required",
+                "currently enrolled",
+                "must be enrolled",
+            )
+        )
+        if hard_signal and not optional_only:
+            return True
+    return False
+
+
+def _has_graduate_technical_degree(candidate: CandidateProfile) -> bool:
+    """Require graduate level and technical field in nearby CV evidence."""
+    lines = [line.strip() for line in candidate.raw_text.splitlines() if line.strip()]
+    for index, _line in enumerate(lines):
+        context = " ".join(lines[max(0, index - 1): index + 2])
+        if GRADUATE_DEGREE_RE.search(context) and TECHNICAL_DEGREE_RE.search(context):
+            return True
+    return False
+
+
+def _has_technical_degree(candidate: CandidateProfile) -> bool:
+    """Require a technical field to appear in actual education context."""
+    degree_signal = re.compile(
+        r"\b(?:degree|bachelor|master|ph\.?d|doctoral|major|candidate|university|college)\b",
+        re.IGNORECASE,
+    )
+    lines = [line.strip() for line in candidate.raw_text.splitlines() if line.strip()]
+    for index, _line in enumerate(lines):
+        context = " ".join(lines[max(0, index - 1): index + 2])
+        if TECHNICAL_DEGREE_RE.search(context) and degree_signal.search(context):
+            return True
+    return False
+
+
 def _passed_core_checks(candidate: CandidateProfile, checks: set[str]) -> set[str]:
     passed: set[str] = set()
     lowered = candidate.raw_text.lower()
@@ -468,13 +545,12 @@ def _passed_core_checks(candidate: CandidateProfile, checks: set[str]) -> set[st
         passed.add("chinese")
     if "capital_markets_knowledge" in checks and "capital markets" in lowered:
         passed.add("capital_markets_knowledge")
-    if "computer_science_degree" in checks and any(
-        _contains_term(lowered, phrase)
-        for phrase in ("computer science", "computer engineering", "software engineering")
-    ):
+    if "computer_science_degree" in checks and _has_technical_degree(candidate):
         passed.add("computer_science_degree")
     if "accounting_degree" in checks and _contains_term(lowered, "accounting"):
         passed.add("accounting_degree")
+    if "graduate_technical_degree" in checks and _has_graduate_technical_degree(candidate):
+        passed.add("graduate_technical_degree")
     return passed
 
 
@@ -491,6 +567,17 @@ def _infer_core_checks(text: str, required_languages: set[str], specification: d
         for phrase in ("business administration", "business degree", "business major")
     ):
         checks.add("business_degree")
+    if _has_required_graduate_technical_degree(text):
+        checks.add("graduate_technical_degree")
+    elif any(
+        _is_required_mention(text, (phrase,))
+        for phrase in (
+            "computer science degree",
+            "computer engineering degree",
+            "software engineering degree",
+        )
+    ):
+        checks.add("computer_science_degree")
     return checks
 
 
@@ -654,12 +741,15 @@ def _specificity_penalties(
             "computer engineering degree",
             "software engineering degree",
             "degree in computer science",
+            "degree program in computer science",
+            "degree program in computer engineering",
+            "degree program in electrical engineering",
         )
     )
     if engineering_degree_language:
         has_adjacent_degree = any(
             _contains_term(candidate.raw_text, phrase)
-            for phrase in ("computer science", "computer engineering", "software engineering", "business informatics")
+            for phrase in ("computer science", "computer engineering", "software engineering")
         )
         if not has_adjacent_degree:
             points += 6
@@ -698,7 +788,10 @@ def _domain_score_cap(
 
 
 def assess_fit(candidate: CandidateProfile, job: JobPosting) -> FitResult:
-    text = job.text.lower()
+    # The title is usually the cleanest role signal; the body is cleaned by
+    # the job parser before it reaches this function.
+    focused_body = focus_job_content(job.text)
+    text = "\n".join(part for part in (job.title, focused_body) if part).casefold()
     job_tags = _present_tags(text, TAG_PATTERNS)
     candidate_tags = candidate.evidence_tags
     specification = job.requirements or {}
@@ -731,6 +824,10 @@ def assess_fit(candidate: CandidateProfile, job: JobPosting) -> FitResult:
             blockers.append(f"Required language missing: {language.title()}")
 
     passed_checks = _passed_core_checks(candidate, core_checks)
+    if "graduate_technical_degree" in core_checks and "graduate_technical_degree" not in passed_checks:
+        blockers.append("Required graduate technical degree missing")
+    elif "computer_science_degree" in core_checks and "computer_science_degree" not in passed_checks:
+        blockers.append("Required technical degree missing")
     qualification_score = _score_coverage(core_checks, passed_checks, 25)
     breakdown = {
         "Role responsibilities": _weighted_coverage(responsibility_tags, candidate, 30),
@@ -748,7 +845,13 @@ def assess_fit(candidate: CandidateProfile, job: JobPosting) -> FitResult:
         score = domain_cap
         if domain_cap_reason:
             penalty_reasons.append(domain_cap_reason)
-    if blockers:
+    if "Required graduate technical degree missing" in blockers:
+        # A missing minimum-degree gate is materially different from a soft
+        # skill gap; it should never look like an apply-now match.
+        score = min(score, 45)
+    elif "Required technical degree missing" in blockers:
+        score = min(score, 45)
+    elif blockers:
         # Eligibility is a separate gate: a strong-looking keyword match must
         # not wash out an explicit language requirement.
         score = min(score, 55)
