@@ -51,6 +51,13 @@ This document records important product and engineering decisions. It answers â€
 - **Reason:** The public server fetches a URL supplied by an anonymous user. Without validation, that endpoint could be abused to access local services or cloud metadata endpoints.
 - **Consequence:** Unusual but non-public URLs and non-standard ports are rejected. Users can still use the pasted-job-text fallback when a legitimate page cannot be fetched.
 
+## D-008 â€” Do not score pages with unreliable job content
+
+- **Date:** 2026-09-05
+- **Decision:** Run a lightweight content-quality gate after fetching and extracting a job page. If the result is empty, blocked, boilerplate-only, too short, or lacks job-related signals, stop before scoring and request pasted job text.
+- **Reason:** A successful HTTP response does not guarantee that the response contains the job description. Login shells, JavaScript blockers, and company pages can otherwise produce misleading scores.
+- **Consequence:** Some unusual short postings may require the paste fallback, but the system avoids presenting a fabricated score when the source is not reliable enough.
+
 ## Open decisions
 
 - Calibrate score bands with a small, diverse set of CVs and postings before making the scoring language stronger.
