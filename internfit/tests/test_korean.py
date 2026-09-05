@@ -140,8 +140,9 @@ class KoreanSupportTests(unittest.TestCase):
             "<body><h2>담당업무</h2><p>시장조사 및 전략기획을 수행합니다.</p></body></html>"
         ).encode("cp949")
 
-        with patch("core.job_parser.urlopen", return_value=_FakeResponse(html)):
-            posting = fetch_job_posting("https://example.com/ko/job")
+        with patch("core.job_parser._public_ip_addresses", return_value=("93.184.216.34",)):
+            with patch("core.job_parser._open_url", return_value=_FakeResponse(html)):
+                posting = fetch_job_posting("https://example.com/ko/job")
 
         self.assertEqual(posting.source_status, "ok")
         self.assertIn("국문 전략 인턴", posting.title)
