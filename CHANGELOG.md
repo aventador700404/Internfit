@@ -2,6 +2,22 @@
 
 This file records user-visible changes to InternFit. Technical rationale is kept in [`docs/decisions.md`](docs/decisions.md).
 
+## [0.4.0] — 2026-09-05
+
+### Added
+
+- Added optional Luna semantic analysis for Korean, English, and mixed-language paraphrases.
+- Kept final scoring, eligibility blockers, and score caps in the deterministic Python engine.
+- Added exact-source quote validation for LLM evidence, matches, and CV-edit suggestions.
+- Added a default server-side $1.00 Luna budget guard with Supabase-backed reservations when configured.
+- Added provider failure, missing-key, invalid-output, and exhausted-budget fallbacks to rule-based scoring.
+
+### Privacy and cost
+
+- Only extracted CV/job text is sent to the provider when `OPENAI_API_KEY` is configured; uploaded bytes are not sent.
+- Responses API storage is disabled for these calls, and raw prompts/responses are excluded from telemetry.
+- The LLM path is off by default until the owner adds the server-side key.
+
 ## [0.3.0] — 2026-09-05
 
 ### Security
