@@ -17,6 +17,71 @@ IGNORED_TAGS = {"script", "style", "noscript", "template", "svg", "canvas"}
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 ALLOWED_URL_SCHEMES = {"http", "https"}
 ALLOWED_URL_PORTS = {None, 80, 443}
+MIN_JOB_TEXT_CHARS = 180
+
+# These are intentionally broad signals rather than a second scoring system.
+# They answer only whether the fetched page contains enough job-like content
+# to be scored at all.
+JOB_ROLE_PATTERNS = (
+    r"\b(?:intern|internship|analyst|associate|coordinator|manager|engineer|consultant|specialist|assistant|developer|designer)\b",
+    "인턴",
+    "분석가",
+    "코디네이터",
+    "매니저",
+    "엔지니어",
+    "컨설턴트",
+)
+JOB_CONTENT_PATTERNS = (
+    r"\b(?:role|job) overview\b",
+    r"\bminimum qualifications?\b",
+    r"\bresponsibilit(?:y|ies)\b",
+    r"\bqualifications?\b",
+    r"\brequirements?\b",
+    r"\bpreferred\b",
+    r"\brequired\b",
+    r"\bexperience\b",
+    r"\bskills?\b",
+    r"\bdegree\b",
+    r"\benrolled\b",
+    r"\bsupport\b",
+    r"\bresearch\b",
+    r"\banalysis\b",
+    r"\boperations?\b",
+    "주요업무",
+    "담당업무",
+    "업무내용",
+    "자격요건",
+    "지원자격",
+    "우대사항",
+    "필수요건",
+    "경력",
+    "경험",
+    "전공",
+    "재학생",
+    "분석",
+    "기획",
+    "운영",
+    "연구",
+    "협업",
+)
+BLOCKED_PAGE_CUES = (
+    "enable javascript",
+    "javascript is disabled",
+    "checking your browser",
+    "verify you are human",
+    "access denied",
+    "security check",
+    "captcha",
+    "sign in to continue",
+    "log in to continue",
+    "please sign in",
+)
+BOILERPLATE_CUES = (
+    "cookie settings",
+    "privacy preferences",
+    "all rights reserved",
+    "enable cookies",
+)
 
 
 class UnsafeUrlError(ValueError):
@@ -91,6 +156,44 @@ class _SafeRedirectHandler(HTTPRedirectHandler):
 def _open_url(request: Request, timeout: int):
     opener = build_opener(_SafeRedirectHandler)
     return opener.open(request, timeout=timeout)
+
+
+def _contains_pattern(text: str, pattern: str) -> bool:
+    if pattern.startswith(r"\b"):
+        return re.search(pattern, text, flags=re.IGNORECASE) is not None
+    return pattern.casefold() in text.casefold()
+
+
+def _job_content_issue(text: str, title: str = "") -> str | None:
+    """Return a reason when fetched text is not reliable enough to score."""
+    normalized_text = normalize_text(text)
+    if not normalized_text:
+        return "empty_text"
+    if normalize_text(title) and normalized_text.casefold() == normalize_text(title).casefold():
+        return "empty_text"
+
+    body_lower = normalized_text.casefold()
+    role_signal = any(_contains_pattern(title, pattern) for pattern in JOB_ROLE_PATTERNS)
+    content_signal_count = sum(
+        _contains_pattern(normalized_text, pattern) for pattern in JOB_CONTENT_PATTERNS
+    )
+
+    if any(cue in body_lower for cue in BLOCKED_PAGE_CUES) and content_signal_count < 2:
+        return "blocked_page"
+    if any(cue in body_lower for cue in BOILERPLATE_CUES) and content_signal_count < 2:
+        return "boilerplate_only"
+    if content_signal_count == 0 or (not role_signal and content_signal_count < 2):
+        return "no_job_signals"
+    # A short page can still be valid when it has a role title plus at least
+    # two concrete job-content signals. Otherwise it is probably a shell,
+    # title-only page, or an error response.
+    if (
+        len(normalized_text) < MIN_JOB_TEXT_CHARS
+        and not (role_signal and content_signal_count >= 2)
+        and content_signal_count < 3
+    ):
+        return "too_short"
+    return None
 
 # Career pages frequently place the actual role beside company marketing,
 # related jobs, and legal copy. These headings are useful across career-site
@@ -537,6 +640,7 @@ def fetch_job_posting(url: str, timeout: int = 12) -> JobPosting:
     else:
         text = full_text
     text = focus_job_content(text)
+
     company = (
         structured_job.get("company", "")
         or normalize_text(parser.meta.get("og:site_name", ""))
@@ -545,6 +649,16 @@ def fetch_job_posting(url: str, timeout: int = 12) -> JobPosting:
     )
     if company == "Unknown":
         company = _company_from_url(url)
+
+    content_issue = _job_content_issue(text, title)
+    if content_issue:
+        return JobPosting(
+            title=title,
+            company=company,
+            url=url,
+            text="",
+            source_status=f"content_unusable: {content_issue}",
+        )
     return JobPosting(title=title, company=company, url=url, text=text)
 
 
