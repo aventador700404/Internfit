@@ -98,7 +98,7 @@
       .positive::before { content: "✓"; color: var(--accent); margin-right: 7px; font-weight: 900; }
       .gap::before { content: "→"; color: #ffcb82; margin-right: 7px; font-weight: 900; }
       .footnote { margin: 21px 0 0; color: var(--muted); font-size: 12px; }
-      @media (max-width: 780px) {
+      .privacy-note { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }\n      @media (max-width: 780px) {
         .shell { padding: 20px 16px 38px; }
         .nav { gap: 12px; align-items: flex-start; }
         .status { flex: 0 0 auto; }
@@ -173,6 +173,7 @@
         </section>
       </section>
       <p class="footnote">CV parser connected · kept temporarily in this browser session · public-link extraction active for readable pages.</p>
+      <p class="privacy-note">For engine calibration, this beta stores anonymous derived signals such as score and detected categories. CV files and job text are not stored.</p>
     </main>
     <script>
       const upload = document.querySelector('#cv-upload');

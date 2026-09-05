@@ -16,6 +16,7 @@ This file records user-visible changes to InternFit. Technical rationale is kept
 - Added regression coverage for unsafe URL schemes, private IPs, credentials, non-standard ports, and unsafe redirects.
 - Added a job-content quality gate so empty, blocked, boilerplate-only, or non-job pages are not scored.
 - Added privacy-conscious JSON analysis events for engine calibration; raw CV and job text are excluded.
+- Added optional Supabase persistence for the same derived telemetry; database outages do not block analysis.
 - Kept job-page responses bounded to prevent unexpectedly large downloads.
 
 ## [0.2.0] — 2026-09-04

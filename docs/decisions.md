@@ -63,7 +63,14 @@ This document records important product and engineering decisions. It answers â€
 - **Date:** 2026-09-05
 - **Decision:** Emit JSON analysis events to the Render service logs after explicit owner approval. Record derived fields such as detected tags, score breakdown, blockers, extraction status, and latency; never record CV text, job text, filenames, or full URLs.
 - **Reason:** Engine calibration needs real input/output distributions, but storing source documents would create unnecessary privacy and retention risk.
-- **Consequence:** Render logs can support early calibration and debugging. A durable dataset, user-facing consent notice, retention period, and deletion flow are required before moving this data into a database.
+- **Consequence:** Render logs can support early calibration and debugging. An optional Supabase table now supports durable beta calibration, while raw documents remain excluded. User-facing notice, retention period, and deletion flow remain required before using the dataset beyond beta calibration.
+
+## D-010 â€” Make Supabase persistence optional and server-side
+
+- **Date:** 2026-09-05
+- **Decision:** Use Supabase's REST Data API only when `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are configured on Render. Keep stdout logging as the fallback, and make database failures non-fatal to analysis.
+- **Reason:** The beta needs durable rows for calibration, but it should remain deployable without credentials, additional Python dependencies, or an LLM provider. A server-only key also prevents the browser from writing directly to the telemetry table.
+- **Consequence:** The owner must create the Supabase project, run the schema once, and add two Render environment variables. If the project is paused or unavailable, analyses still work and remain visible in Render logs.
 
 ## Open decisions
 

@@ -5,6 +5,8 @@ import json
 from urllib.parse import urlparse
 import uuid
 
+from .telemetry_store import persist_analysis_event
+
 
 def new_analysis_id() -> str:
     """Create a short non-identifying ID for joining related log events."""
@@ -32,3 +34,4 @@ def emit_analysis_event(event: str, analysis_id: str, **fields: object) -> None:
     }
     payload.update(fields)
     print(json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True), flush=True)
+    persist_analysis_event(payload)

@@ -25,4 +25,24 @@ InternFit emits one JSON object per analysis event to standard output. Render ca
 
 Telemetry shows how the engine behaves, not whether its judgment is correct. Calibration should combine these logs with a separate human label such as “score too high,” “appropriate,” or “score too low.”
 
-The current implementation uses Render logs for beta diagnostics. Moving telemetry to Supabase or another durable store requires an explicit retention period, user-facing notice/consent, and a deletion policy.
+## Optional durable storage
+
+The current implementation continues to emit Render logs. If both server-only
+environment variables below are configured, the same allowlisted event is also
+appended to Supabase through its REST Data API:
+
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+
+No extra Python package or LLM/API provider is needed. Without these variables,
+the app stays on Render logs and analysis behavior is unchanged. The service
+role key must exist only in Render environment variables; it must never be
+committed or sent to the browser.
+
+To enable the table, run [`supabase/schema.sql`](../supabase/schema.sql) once
+in the Supabase SQL Editor. The table is append-only from the application side
+and has no browser-facing `anon` or `authenticated` access.
+
+For the public beta, show users a short notice that anonymized derived analysis
+signals are collected for engine calibration. Set a retention period and a
+deletion process before using the data beyond beta calibration.
