@@ -58,6 +58,13 @@ This document records important product and engineering decisions. It answers â€
 - **Reason:** A successful HTTP response does not guarantee that the response contains the job description. Login shells, JavaScript blockers, and company pages can otherwise produce misleading scores.
 - **Consequence:** Some unusual short postings may require the paste fallback, but the system avoids presenting a fabricated score when the source is not reliable enough.
 
+## D-009 â€” Collect derived scoring telemetry, not source documents
+
+- **Date:** 2026-09-05
+- **Decision:** Emit JSON analysis events to the Render service logs after explicit owner approval. Record derived fields such as detected tags, score breakdown, blockers, extraction status, and latency; never record CV text, job text, filenames, or full URLs.
+- **Reason:** Engine calibration needs real input/output distributions, but storing source documents would create unnecessary privacy and retention risk.
+- **Consequence:** Render logs can support early calibration and debugging. A durable dataset, user-facing consent notice, retention period, and deletion flow are required before moving this data into a database.
+
 ## Open decisions
 
 - Calibrate score bands with a small, diverse set of CVs and postings before making the scoring language stronger.
