@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from io import BytesIO
 from functools import lru_cache
@@ -130,10 +130,18 @@ class CandidateProfile:
     tools: set[str]
     graduation: str | None
     education: list[str]
+    # Semantic evidence is added only after an optional LLM pass. Keeping it
+    # separate from parser evidence makes the deterministic baseline visible
+    # and lets the scorer assign supporting evidence a smaller weight.
+    semantic_evidence: dict[str, list[str]] = field(default_factory=dict)
+    semantic_strengths: dict[str, int] = field(default_factory=dict)
 
     @property
     def evidence_tags(self) -> set[str]:
-        return {tag for tag, lines in self.evidence.items() if lines}
+        return (
+            {tag for tag, lines in self.evidence.items() if lines}
+            | {tag for tag, lines in self.semantic_evidence.items() if lines}
+        )
 
 
 def extract_docx_text(file_path: str | Path) -> list[str]:
