@@ -14,6 +14,7 @@ This file records user-visible changes to InternFit. Technical rationale is kept
 ### Reliability
 
 - Added regression coverage for unsafe URL schemes, private IPs, credentials, non-standard ports, and unsafe redirects.
+- Added a job-content quality gate so empty, blocked, boilerplate-only, or non-job pages are not scored.
 - Kept job-page responses bounded to prevent unexpectedly large downloads.
 
 ## [0.2.0] — 2026-09-04
