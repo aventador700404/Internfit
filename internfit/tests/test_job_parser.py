@@ -111,6 +111,40 @@ class JobParserTests(unittest.TestCase):
         self.assertIn("Minimum Qualification", posting.text)
         self.assertNotIn("Unrelated marketing", posting.text)
 
+    def test_rejects_empty_extraction_before_scoring(self):
+        posting = self.fetch_html("""
+        <html><head><title>Example Careers</title></head>
+        <body><div id="app"></div></body></html>
+        """)
+        self.assertEqual(posting.source_status, "content_unusable: empty_text")
+        self.assertEqual(posting.text, "")
+
+    def test_rejects_blocked_page_shell(self):
+        posting = self.fetch_html("""
+        <html><head><title>Strategy Intern</title></head>
+        <body><p>Enable JavaScript to continue. Checking your browser...</p></body></html>
+        """)
+        self.assertEqual(posting.source_status, "content_unusable: blocked_page")
+        self.assertEqual(posting.text, "")
+
+    def test_rejects_long_company_page_without_job_signals(self):
+        generic_copy = "Company information and global news for visitors. " * 8
+        posting = self.fetch_html(f"""
+        <html><head><title>Example Careers</title></head>
+        <body><p>{generic_copy}</p></body></html>
+        """)
+        self.assertEqual(posting.source_status, "content_unusable: no_job_signals")
+        self.assertEqual(posting.text, "")
+
+    def test_accepts_short_but_structured_job_posting(self):
+        posting = self.fetch_html("""
+        <html><head><title>Strategy Intern</title></head>
+        <body><h2>Responsibilities</h2><p>Support research.</p>
+        <h2>Requirements</h2><p>Excel required.</p></body></html>
+        """)
+        self.assertEqual(posting.source_status, "ok")
+        self.assertIn("Support research", posting.text)
+
     def test_rejects_non_http_urls_before_opening(self):
         with patch("core.job_parser._open_url") as open_url:
             posting = fetch_job_posting("file:///etc/hostname")
