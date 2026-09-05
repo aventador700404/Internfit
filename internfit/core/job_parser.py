@@ -4,15 +4,93 @@ from dataclasses import dataclass
 from html import unescape
 from html.parser import HTMLParser
 from typing import Any
+import ipaddress
 import json
+import socket
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 import re
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 
 IGNORED_TAGS = {"script", "style", "noscript", "template", "svg", "canvas"}
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+ALLOWED_URL_SCHEMES = {"http", "https"}
+ALLOWED_URL_PORTS = {None, 80, 443}
+
+
+class UnsafeUrlError(ValueError):
+    """Raised when a job URL is not safe for server-side fetching."""
+
+
+def _public_ip_addresses(hostname: str, port: int) -> tuple[str, ...]:
+    """Resolve a hostname and return only addresses that are globally routable.
+
+    Rejecting the whole hostname when any answer is non-public avoids choosing
+    a public address from a mixed DNS response and accidentally allowing a
+    private address through a later connection attempt.
+    """
+    try:
+        infos = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+    except (OSError, socket.gaierror) as exc:
+        raise UnsafeUrlError("hostname could not be resolved") from exc
+
+    addresses = {str(info[4][0]).split("%", 1)[0] for info in infos if info[4]}
+    if not addresses:
+        raise UnsafeUrlError("hostname has no address")
+    try:
+        parsed_addresses = [ipaddress.ip_address(address) for address in addresses]
+    except ValueError as exc:
+        raise UnsafeUrlError("hostname resolved to an invalid address") from exc
+    if any(not address.is_global for address in parsed_addresses):
+        raise UnsafeUrlError("hostname resolves to a non-public address")
+    return tuple(sorted(addresses))
+
+
+def _validate_public_url(url: str) -> None:
+    """Allow only public HTTP(S) URLs before the server makes a request."""
+    if not isinstance(url, str) or len(url) > 2048:
+        raise UnsafeUrlError("invalid URL")
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError as exc:
+        raise UnsafeUrlError("invalid URL") from exc
+
+    if parsed.scheme.casefold() not in ALLOWED_URL_SCHEMES:
+        raise UnsafeUrlError("only HTTP(S) URLs are allowed")
+    if not hostname:
+        raise UnsafeUrlError("URL has no hostname")
+    if parsed.username or parsed.password:
+        raise UnsafeUrlError("URL credentials are not allowed")
+    if port not in ALLOWED_URL_PORTS:
+        raise UnsafeUrlError("non-standard ports are not allowed")
+
+    normalized_host = hostname.rstrip(".")
+    try:
+        address = ipaddress.ip_address(normalized_host)
+    except ValueError:
+        _public_ip_addresses(normalized_host, port or (443 if parsed.scheme.casefold() == "https" else 80))
+    else:
+        if not address.is_global:
+            raise UnsafeUrlError("IP address is not public")
+
+
+class _SafeRedirectHandler(HTTPRedirectHandler):
+    """Revalidate every redirect instead of trusting the first URL."""
+
+    max_redirections = 5
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        target = urljoin(req.full_url, newurl)
+        _validate_public_url(target)
+        return super().redirect_request(req, fp, code, msg, headers, target)
+
+
+def _open_url(request: Request, timeout: int):
+    opener = build_opener(_SafeRedirectHandler)
+    return opener.open(request, timeout=timeout)
 
 # Career pages frequently place the actual role beside company marketing,
 # related jobs, and legal copy. These headings are useful across career-site
@@ -366,17 +444,28 @@ def _company_from_url(url: str) -> str:
 
 
 def fetch_job_posting(url: str, timeout: int = 12) -> JobPosting:
+    try:
+        _validate_public_url(url)
+    except UnsafeUrlError as exc:
+        return JobPosting(
+            title="Could not fetch this job page",
+            company="Unknown",
+            url=url,
+            text="",
+            source_status=f"fetch_failed: {exc.__class__.__name__}",
+        )
+
     request = Request(
         url,
         headers={"User-Agent": "Mozilla/5.0 (compatible; InternFit/0.1; +https://github.com/)"},
     )
     try:
-        with urlopen(request, timeout=timeout) as response:
+        with _open_url(request, timeout=timeout) as response:
             body = response.read(MAX_RESPONSE_BYTES)
             headers = getattr(response, "headers", {})
             content_type = headers.get("Content-Type", "") if hasattr(headers, "get") else ""
             html = _decode_response_body(body, content_type)
-    except (HTTPError, URLError, TimeoutError) as exc:
+    except (HTTPError, URLError, TimeoutError, UnsafeUrlError) as exc:
         return JobPosting(
             title="Could not fetch this job page",
             company="Unknown",
