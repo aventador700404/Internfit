@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Iterable
+from dataclasses import dataclass, field, replace
+from typing import Iterable, Mapping
 import re
 
 from .cv_parser import CandidateProfile
@@ -602,6 +602,11 @@ def _is_metadata_line(line: str) -> bool:
 def _candidate_tag_strength(candidate: CandidateProfile, tag: str) -> int:
     """Return 0=missing, 1=only a supporting mention, 2=direct evidence."""
     lines = _unique_lines(candidate.evidence.get(tag, []))
+    semantic_lines = _unique_lines(candidate.semantic_evidence.get(tag, []))
+    if not lines:
+        lines = semantic_lines
+    else:
+        lines = _unique_lines((*lines, *semantic_lines))
     if not lines:
         return 0
     # SQL Developer is a database certification, not proof of software
@@ -609,8 +614,16 @@ def _candidate_tag_strength(candidate: CandidateProfile, tag: str) -> int:
     # manually constructed CandidateProfile objects too.
     if tag == "software_engineering" and all(_contains_term(line, "sql developer") for line in lines):
         return 0
-    direct = [line for line in lines if not _is_metadata_line(line)]
-    return 2 if direct else 1
+    direct = [line for line in candidate.evidence.get(tag, []) if not _is_metadata_line(line)]
+    if direct:
+        return 2
+    semantic_strength = candidate.semantic_strengths.get(tag, 0)
+    semantic_direct = semantic_strength >= 2 and any(
+        not _is_metadata_line(line) for line in semantic_lines
+    )
+    if semantic_direct:
+        return 2
+    return 1
 
 
 def _strength_fraction(strength: int) -> float:
@@ -636,10 +649,23 @@ def _evidence_score(candidate: CandidateProfile) -> int:
         for line in lines
         if not _is_metadata_line(line)
     }
+    semantic_direct_lines = {
+        _normalise_line(line).casefold()
+        for tag, lines in candidate.semantic_evidence.items()
+        for line in lines
+        if candidate.semantic_strengths.get(tag, 0) >= 2 and not _is_metadata_line(line)
+    }
+    direct_lines |= semantic_direct_lines
     direct_tags = {
         tag
         for tag, lines in candidate.evidence.items()
         if any(not _is_metadata_line(line) for line in lines)
+    }
+    direct_tags |= {
+        tag
+        for tag, lines in candidate.semantic_evidence.items()
+        if candidate.semantic_strengths.get(tag, 0) >= 2
+        and any(not _is_metadata_line(line) for line in lines)
     }
     count = len(direct_lines)
     breadth = len(direct_tags)
@@ -933,7 +959,9 @@ def _best_evidence_line(
     used: set[str] | None = None,
     job_text: str = "",
 ) -> str | None:
-    lines = _unique_lines(candidate.evidence.get(tag, []))
+    lines = _unique_lines(
+        (*candidate.evidence.get(tag, []), *candidate.semantic_evidence.get(tag, []))
+    )
     used = used or set()
     available = [
         line
@@ -1095,9 +1123,81 @@ def _domain_score_cap(
     return cap, f"Missing direct role-specific evidence ({labels}); score capped at {cap}."
 
 
-def assess_fit(candidate: CandidateProfile, job: JobPosting) -> FitResult:
+def _apply_semantic_candidate_overlay(
+    candidate: CandidateProfile,
+    semantic: Mapping[str, object] | None,
+) -> CandidateProfile:
+    """Copy only validated LLM evidence into a scoring-only candidate view."""
+    if not isinstance(semantic, Mapping):
+        return candidate
+    candidate_overlay = semantic.get("candidate")
+    if not isinstance(candidate_overlay, Mapping):
+        return candidate
+    evidence_value = candidate_overlay.get("semantic_evidence")
+    strengths_value = candidate_overlay.get("semantic_strengths")
+    if not isinstance(evidence_value, Mapping) or not isinstance(strengths_value, Mapping):
+        return candidate
+
+    evidence: dict[str, list[str]] = {}
+    for tag, lines in evidence_value.items():
+        if tag not in TAG_PATTERNS or not isinstance(lines, list):
+            continue
+        cleaned = [str(line).strip() for line in lines if isinstance(line, str) and str(line).strip()]
+        if cleaned:
+            evidence[str(tag)] = cleaned[:4]
+    strengths: dict[str, int] = {}
+    for tag, strength in strengths_value.items():
+        if tag in evidence and strength in {1, 2}:
+            strengths[str(tag)] = int(strength)
+    return replace(candidate, semantic_evidence=evidence, semantic_strengths=strengths)
+
+
+def _semantic_job_overlay(
+    semantic: Mapping[str, object] | None,
+) -> dict[str, set[str]]:
+    """Read the validated job-side overlay without allowing arbitrary tags."""
+    empty = {
+        "responsibility_tags": set(),
+        "domain_tags": set(),
+        "preferred_tags": set(),
+        "preferred_domain_tags": set(),
+        "required_tools": set(),
+        "preferred_tools": set(),
+    }
+    if not isinstance(semantic, Mapping) or not isinstance(semantic.get("job"), Mapping):
+        return empty
+    job_overlay = semantic["job"]
+    for key in empty:
+        values = job_overlay.get(key)
+        if isinstance(values, (set, list, tuple)):
+            allowed = TOOL_PATTERNS if key.endswith("tools") else TAG_PATTERNS
+            empty[key] = {value for value in values if isinstance(value, str) and value in allowed}
+    return empty
+
+
+def _semantic_text_items(semantic: Mapping[str, object] | None, key: str, field_name: str) -> list[str]:
+    if not isinstance(semantic, Mapping) or not isinstance(semantic.get(key), list):
+        return []
+    items: list[str] = []
+    for item in semantic[key]:
+        if isinstance(item, Mapping):
+            value = item.get(field_name)
+            if isinstance(value, str) and value.strip() and value.strip().casefold() not in {
+                existing.casefold() for existing in items
+            }:
+                items.append(value.strip())
+    return items
+
+
+def assess_fit(
+    candidate: CandidateProfile,
+    job: JobPosting,
+    semantic: Mapping[str, object] | None = None,
+) -> FitResult:
     # The title is usually the cleanest role signal; the body is cleaned by
     # the job parser before it reaches this function.
+    candidate = _apply_semantic_candidate_overlay(candidate, semantic)
+    semantic_job = _semantic_job_overlay(semantic)
     focused_body = focus_job_content(job.text)
     core_body, preferred_body = _split_preferred_text(focused_body)
     text = "\n".join(part for part in (job.title, core_body) if part).casefold()
@@ -1140,6 +1240,15 @@ def assess_fit(candidate: CandidateProfile, job: JobPosting) -> FitResult:
         if "required_languages" in specification
         else _required_tags(text, LANGUAGE_PATTERNS)
     )
+    # Luna may normalize paraphrases such as "align internal teams" to the
+    # existing stakeholder tag. It cannot create or waive hard language or
+    # degree checks; those remain entirely deterministic below.
+    responsibility_tags |= semantic_job["responsibility_tags"]
+    domain_tags |= semantic_job["domain_tags"]
+    preferred_tags |= semantic_job["preferred_tags"]
+    preferred_domain_tags |= semantic_job["preferred_domain_tags"]
+    required_tools |= semantic_job["required_tools"]
+    preferred_tools |= semantic_job["preferred_tools"]
     core_checks = _infer_core_checks(text, required_languages, specification)
 
     # Explicit degree requirements are checked separately so a preferred
@@ -1212,6 +1321,23 @@ def assess_fit(candidate: CandidateProfile, job: JobPosting) -> FitResult:
     gaps = list(gap_tags)
     gaps.extend(f"missing qualification: {check}" for check in sorted(core_checks - passed_checks))
 
+    semantic_matches = _semantic_text_items(semantic, "matches", "statement")
+    semantic_gaps = _semantic_text_items(semantic, "gaps", "suggestion")
+    final_match_explanations = semantic_matches or _build_explanations(candidate, strengths_set, text)
+    if semantic_gaps:
+        # Keep deterministic blocker/qualification guidance visible even when
+        # Luna supplies a more specific CV-edit suggestion.
+        deterministic_gaps = _build_gap_details(
+            (), core_checks - passed_checks, blockers
+        )
+        merged_gaps: list[str] = []
+        for detail in [*semantic_gaps, *deterministic_gaps]:
+            if detail.casefold() not in {item.casefold() for item in merged_gaps}:
+                merged_gaps.append(detail)
+        final_gap_details = merged_gaps[:6]
+    else:
+        final_gap_details = _build_gap_details(gap_tags, core_checks - passed_checks, blockers)
+
     return FitResult(
         score=score,
         grade=_grade(score),
@@ -1223,8 +1349,8 @@ def assess_fit(candidate: CandidateProfile, job: JobPosting) -> FitResult:
         gaps=gaps,
         breakdown=breakdown,
         evidence=_build_evidence(candidate, strengths_set, text),
-        match_explanations=_build_explanations(candidate, strengths_set, text),
-        gap_details=_build_gap_details(gap_tags, core_checks - passed_checks, blockers),
+        match_explanations=final_match_explanations,
+        gap_details=final_gap_details,
         penalty_points=penalty_points,
         penalty_reasons=penalty_reasons,
     )
