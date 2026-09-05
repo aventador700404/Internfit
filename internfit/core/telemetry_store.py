@@ -52,6 +52,16 @@ SAFE_FIELDS = {
     "error_type",
     "status",
     "reason",
+    "llm_status",
+    "llm_used",
+    "llm_model",
+    "llm_input_chars",
+    "llm_output_chars",
+    "llm_input_tokens",
+    "llm_output_tokens",
+    "llm_estimated_cost_usd",
+    "llm_budget_mode",
+    "llm_error_type",
 }
 
 
@@ -116,4 +126,3 @@ def persist_analysis_event(payload: Mapping[str, object]) -> bool:
             return True
     except (HTTPError, URLError, TimeoutError, OSError, ValueError, TypeError):
         return False
-
