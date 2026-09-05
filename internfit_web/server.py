@@ -12,10 +12,14 @@ from urllib.parse import urlparse
 
 
 ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT.parent / "internfit"))
+CORE_ROOT = ROOT.parent / "internfit"
+if not CORE_ROOT.exists():  # local scratch layout used for offline tests
+    CORE_ROOT = ROOT.parent / "tmp_internfit"
+sys.path.insert(0, str(CORE_ROOT))
 
 from core.cv_parser import parse_cv_bytes, parse_pdf_bytes  # noqa: E402
 from core.job_parser import fetch_job_posting, job_from_text  # noqa: E402
+from core.llm_client import analyze_with_luna  # noqa: E402
 from core.scoring import assess_fit  # noqa: E402
 from core.telemetry import emit_analysis_event, new_analysis_id, safe_url_domain  # noqa: E402
 
@@ -95,8 +99,23 @@ def _result_log_fields(result) -> dict[str, object]:
     }
 
 
+def _llm_log_fields(luna) -> dict[str, object]:
+    return {
+        "llm_status": luna.status,
+        "llm_used": luna.used,
+        "llm_model": luna.model,
+        "llm_input_chars": luna.input_chars,
+        "llm_output_chars": luna.output_chars,
+        "llm_input_tokens": luna.input_tokens,
+        "llm_output_tokens": luna.output_tokens,
+        "llm_estimated_cost_usd": luna.estimated_cost_usd,
+        "llm_budget_mode": luna.budget_mode,
+        "llm_error_type": luna.error_type,
+    }
+
+
 class AppHandler(BaseHTTPRequestHandler):
-    server_version = "InternFit/0.2"
+    server_version = "InternFit/0.4"
 
     def _send(self, status: int, payload: bytes, content_type: str = "application/json; charset=utf-8") -> None:
         self.send_response(status)
@@ -115,7 +134,7 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send(200, (ROOT / "index.html").read_bytes(), "text/html; charset=utf-8")
             return
         if path == "/health":
-            self._json(200, {"status": "ok", "service": "InternFit", "version": "0.2"})
+            self._json(200, {"status": "ok", "service": "InternFit", "version": "0.4"})
             return
         self._json(404, {"error": "not_found"})
 
@@ -197,13 +216,18 @@ class AppHandler(BaseHTTPRequestHandler):
                 self._json(400, {"error": "A job URL or job description is required."})
                 return
 
-            result = assess_fit(candidate, job)
+            # The LLM is an optional semantic layer. Missing keys, budget
+            # exhaustion, provider failures, or invalid JSON all fall back to
+            # the same deterministic engine used by the no-LLM beta.
+            luna = analyze_with_luna(candidate, job, analysis_id)
+            result = assess_fit(candidate, job, semantic=luna.semantic if luna.used else None)
             emit_analysis_event(
                 "analysis_completed",
                 analysis_id,
                 **_candidate_log_fields(candidate, len(cv), cv_format),
                 **_job_log_fields(job, job_url, analysis_source, job_fetch_status),
                 **_result_log_fields(result),
+                **_llm_log_fields(luna),
                 duration_ms=round((time.perf_counter() - started_at) * 1000),
             )
             response = asdict(result)
@@ -213,6 +237,10 @@ class AppHandler(BaseHTTPRequestHandler):
                 "apply_url": job.url or job_url,
                 "cv_name": candidate.source_name,
                 "analysis_source": analysis_source,
+                "analysis_mode": "Luna-assisted" if luna.used else "Rule-based fallback",
+                "llm_used": luna.used,
+                "llm_status": luna.status,
+                "llm_model": luna.model,
             })
             self._json(200, response)
         except (ValueError, KeyError) as exc:
