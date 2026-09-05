@@ -72,6 +72,13 @@ This document records important product and engineering decisions. It answers â€
 - **Reason:** The beta needs durable rows for calibration, but it should remain deployable without credentials, additional Python dependencies, or an LLM provider. A server-only key also prevents the browser from writing directly to the telemetry table.
 - **Consequence:** The owner must create the Supabase project, run the schema once, and add two Render environment variables. If the project is paused or unavailable, analyses still work and remain visible in Render logs.
 
+## D-011 â€” Add Luna as a bounded semantic overlay
+
+- **Date:** 2026-09-05
+- **Decision:** Use Luna only to normalize meaning across Korean, English, and mixed-language CVs and job postings, while keeping the final score, eligibility gates, penalties, and caps in Python.
+- **Reason:** Exact keyword matching misses equivalent wording and produces repetitive generic explanations. A semantic layer can improve recall and explanation quality without making the score opaque or allowing the model to waive hard requirements.
+- **Consequence:** When the owner enables the API key, CV text and job text are sent to the provider for one bounded call. Exact-source validation, a default $1 budget, `store:false`, and deterministic fallback limit the cost and failure surface. The LLM output is still an assistive signal, not a hiring prediction.
+
 ## Open decisions
 
 - Calibrate score bands with a small, diverse set of CVs and postings before making the scoring language stronger.
