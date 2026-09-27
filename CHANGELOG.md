@@ -2,6 +2,15 @@
 
 This file records user-visible changes to InternFit. Technical rationale is kept in [`docs/decisions.md`](docs/decisions.md).
 
+## [0.4.1] — 2026-09-27
+
+### Fixed
+
+- Restored mobile layouts by removing a literal escaped newline that caused the responsive media query to be discarded.
+- Kept upload, job-posting, and result cards in a single column at widths up to 780px.
+- Prevented long CV filenames, job titles, result URLs, and evidence from widening the page.
+- Improved score-label spacing and mobile pasted-description input sizing.
+
 ## [0.4.0] — 2026-09-05
 
 ### Added
