@@ -17,7 +17,7 @@ from .llm_client import MAX_CV_CHARS, MAX_JOB_CHARS, PROMPT_VERSION, VALIDATOR_V
 from .scoring import TAG_PATTERNS, _contains_term, _is_metadata_line
 
 
-TRACE_VERSION = "1"
+TRACE_VERSION = "2"
 CONSENT_VERSION = "evidence-v1"
 MAX_EXCERPT_CHARS = 280
 MAX_EXCERPTS_PER_SOURCE = 24
@@ -35,6 +35,8 @@ def build_trace_summary(candidate, job, luna, baseline, result, before, after) -
     """Return only derived data: safe for stdout and non-consenting users."""
     semantic = luna.semantic if luna.used else {}
     semantic_tags = set(semantic.get("candidate", {}).get("semantic_evidence", {}))
+    accepted_gaps = len(semantic.get("gaps", []))
+    rejected_gaps = sum(item.get("section") == "gaps" and item.get("status") == "rejected" for item in luna.validation)
     revision = os.environ.get("RENDER_GIT_COMMIT", "")
     return {
         "trace_version": TRACE_VERSION,
@@ -56,6 +58,15 @@ def build_trace_summary(candidate, job, luna, baseline, result, before, after) -
         "llm_added_candidate_tags": sorted(semantic_tags - candidate.evidence_tags),
         "llm_job_overlay": semantic.get("job", {}),
         "llm_validation": luna.validation,
+        "cv_advice_source": "llm" if accepted_gaps else "rule_based",
+        "llm_gap_count": accepted_gaps,
+        "llm_gap_rejected_count": rejected_gaps,
+        "llm_gap_status": (
+            "partial" if accepted_gaps and rejected_gaps else
+            "accepted" if accepted_gaps else
+            "all_rejected" if rejected_gaps else
+            "none_returned" if luna.used else "llm_unavailable"
+        ),
         "llm_source_truncated": {
             "cv": len(candidate.raw_text) > MAX_CV_CHARS,
             "job": len("\n".join((job.title, job.text))) > MAX_JOB_CHARS,
@@ -63,13 +74,13 @@ def build_trace_summary(candidate, job, luna, baseline, result, before, after) -
     }
 
 
-def _scrub_excerpt(value: str) -> str:
+def _scrub_excerpt(value: str, limit: int = MAX_EXCERPT_CHARS) -> str:
     """Mask obvious contacts; this does NOT make excerpts anonymous."""
     value = re.sub(r"\s+", " ", value).strip()
     value = re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "[email]", value)
     value = re.sub(r"(?:https?://|www\.)\S+", "[link]", value, flags=re.I)
     value = re.sub(r"(?<!\w)(?:\+?\d[\d ()-]{7,}\d)(?!\w)", "[number]", value)
-    return value[:MAX_EXCERPT_CHARS] + ("…" if len(value) > MAX_EXCERPT_CHARS else "")
+    return value[:limit] + ("…" if len(value) > limit else "")
 
 
 def build_evidence_trace(candidate, job, luna, result, diagnostics) -> dict[str, object]:
@@ -109,7 +120,10 @@ def build_evidence_trace(candidate, job, luna, result, diagnostics) -> dict[str,
     } for item in semantic.get("matches", [])[:4]]
     gaps = [{
         "tag": item["tag"],
-        "suggestion": _scrub_excerpt(item["suggestion"]),
+        "suggestion": _scrub_excerpt(item["suggestion"], 400),
+        "edit_type": item.get("edit_type", ""),
+        "job_source_id": item.get("job_source_id", ""),
+        "cv_source_id": item.get("cv_source_id", ""),
         "cv_excerpt": excerpt("cv", item["cv_evidence"]),
         "job_excerpt": excerpt("job", item["job_evidence"]),
     } for item in semantic.get("gaps", [])[:6]]
@@ -151,5 +165,5 @@ def build_evidence_trace(candidate, job, luna, result, diagnostics) -> dict[str,
         "llm_matches": matches,
         "llm_gaps": gaps,
         "displayed_matches": [_scrub_excerpt(item) for item in result.match_explanations[:4]],
-        "displayed_gaps": [_scrub_excerpt(item) for item in result.gap_details[:6]],
+        "displayed_gaps": [_scrub_excerpt(item, 400) for item in result.gap_details[:6]],
     }

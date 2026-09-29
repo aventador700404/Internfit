@@ -78,6 +78,10 @@ SAFE_FIELDS = {
     "llm_job_overlay",
     "llm_validation",
     "llm_source_truncated",
+    "cv_advice_source",
+    "llm_gap_count",
+    "llm_gap_rejected_count",
+    "llm_gap_status",
     "evidence_storage_consent",
     "consent_version",
 }

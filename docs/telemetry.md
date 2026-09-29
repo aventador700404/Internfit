@@ -29,6 +29,10 @@ means no successful write was confirmed. DB failures never block scoring.
 - `llm_candidate_tags`, `llm_added_candidate_tags`, and `llm_job_overlay`.
 - `llm_validation`: accepted/rejected candidate evidence, matches and gaps,
   with section/index/tag/strength and rejection reason, never rejected quotes.
+- `cv_advice_source`, `llm_gap_count`, `llm_gap_rejected_count`, `llm_gap_status`:
+  whether CV advice came from the LLM and whether suggestions were accepted,
+  partly rejected, all rejected, absent, or unavailable. Gap validation includes
+  known source IDs and edit type, but no source text in stdout.
 - Engine source fingerprint, prompt/schema fingerprint, validator/trace version,
   deployment commit when available, and whether the LLM input was truncated.
 
@@ -37,9 +41,12 @@ is a second deterministic calculation, not another LLM request. If the LLM is
 unavailable, both scores are equal. Scoring weights and caps are unchanged.
 
 Evidence strength is `0 = missing`, `1 = supporting`, `2 = direct`.
-Validation confirms source-quote checks, not semantic correctness. An accepted
-quote may still have the wrong tag or strength. Job overlay tags are enum-filtered
-classifications, not quote-validated claims.
+Candidate evidence and matches use source-quote checks. From v0.4.3, CV-edit
+suggestions use server-owned source IDs resolved to the exact sections sent
+to the model. Unknown/wrong-document references are rejected. Neither method
+proves semantic correctness: the chosen source can still be irrelevant or its
+meaning overstated. Job overlay tags are enum-filtered classifications, not
+quote-validated claims.
 
 ## Optional: short evidence excerpts
 
@@ -55,6 +62,8 @@ With consent, the same private DB row includes `payload.analysis_trace`:
 - `tag_evidence`: rule-derived CV quotes versus accepted LLM quotes,
   requirement groups, final strength, and selected job keyword context;
 - accepted LLM match/gap explanations and source-excerpt references;
+- gap `edit_type`, `job_source_id`, and `cv_source_id` to trace each editing
+  suggestion to the source sections shown to the model;
 - selected education excerpts and the explanations displayed to the user.
 
 Limits: 24 unique CV and 24 job excerpts, 280 characters each (plus an ellipsis),
@@ -62,6 +71,7 @@ and two selected quotes per tag/source. Omitted counts and per-tag evidence
 counts make selection limits visible. Job keyword context helps manual review;
 it is **not** asserted to be the sentence the LLM used. This bounded diagnostic
 record cannot reconstruct full documents or replay arbitrary future parsers.
+Generated CV-edit explanations are separately bounded to 400 characters.
 
 Obvious emails, phone-like numbers, and links are masked best-effort. Names,
 workplaces, and other personal details may remain: excerpts are **not anonymous**.

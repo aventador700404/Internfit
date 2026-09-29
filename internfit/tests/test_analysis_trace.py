@@ -32,7 +32,7 @@ def fixtures():
             {"tag": "strategy", "strength": "direct", "evidence": "Invented private sentence never in the CV."},
         ],
         "matches": [{"tag": "stakeholder", "statement": "Team coordination supports this role's launch work.", "cv_evidence": CV_LINE}],
-        "gaps": [{"tag": "stakeholder", "suggestion": "State an outcome of the launch coordination if available.", "job_evidence": JOB_LINE, "cv_evidence": CV_LINE}],
+        "gaps": [{"tag": "stakeholder", "edit_type": "clarify_existing", "suggestion": "State an outcome of the launch coordination if available.", "job_source_id": "J001", "cv_source_id": "C001"}],
     }
     validation = []
     semantic = _validated_semantic(raw, candidate, job, diagnostics=validation)
@@ -85,7 +85,7 @@ class AnalysisTraceTests(unittest.TestCase):
         self.assertNotIn("Invented private sentence", serialized)
         references = {item["id"]: item for item in trace["excerpts"]}
         self.assertEqual(references[trace["llm_matches"][0]["cv_excerpt"]]["text"], CV_LINE)
-        self.assertEqual(references[trace["llm_gaps"][0]["job_excerpt"]]["text"], JOB_LINE)
+        self.assertIn(JOB_LINE, references[trace["llm_gaps"][0]["job_excerpt"]]["text"])
         self.assertTrue(all(len(item["text"]) <= 281 for item in trace["excerpts"]))
         for source in ("cv", "job"):
             self.assertLessEqual(sum(item["source"] == source for item in trace["excerpts"]), 24)
@@ -168,6 +168,10 @@ class ServerTraceTests(unittest.TestCase):
         self.assertTrue(payload["evidence_storage_consent"])
         self.assertIn("rule_only_score", payload)
         self.assertEqual(response["score"] - payload["rule_only_score"], payload["llm_score_delta"])
+        self.assertEqual(response["cv_advice_source"], "llm")
+        self.assertEqual(payload["llm_gap_count"], 1)
+        self.assertEqual(payload["llm_gap_status"], "accepted")
+        self.assertIn("State an outcome of the launch coordination if available.", response["gap_details"])
 
     def test_old_clients_and_unchecked_consent_never_save_evidence(self):
         for consent, version in ((None, CONSENT_VERSION), ("false", CONSENT_VERSION), ("true", "old")):

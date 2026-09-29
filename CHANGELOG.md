@@ -2,6 +2,17 @@
 
 This file records user-visible changes to InternFit. Technical rationale is kept in [`docs/decisions.md`](docs/decisions.md).
 
+## [0.4.3] — 2026-09-29
+
+### Improved
+
+- Made Luna CV-edit advice refer to server-labeled CV/job source sections instead of retyping job quotes that could fail exact matching.
+- Constrained reference IDs to the actual text sent in that analysis and rejected unknown or wrong-document references individually.
+- Asked for specific edits tied to job requirements, distinguishing clarification of existing experience from conditional suggestions for missing evidence.
+- Added an AI-assisted/rule-based guidance label and accepted/rejected suggestion counts in telemetry.
+- Preserved one model request per analysis, the existing output token limit, scoring weights, budget guard, and consent-based evidence storage.
+- Added mixed-language source-reference, invalid-reference, conditional-advice, fallback, and single-call regression coverage.
+
 ## [0.4.2] — 2026-09-29
 
 ### Added

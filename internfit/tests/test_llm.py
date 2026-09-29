@@ -78,7 +78,7 @@ class LunaClientTests(unittest.TestCase):
                 {"tag": "strategy", "statement": "This should be rejected because the quote is fake.", "cv_evidence": "invented CV quote"},
             ],
             "gaps": [
-                {"tag": "strategy", "suggestion": "Add the decision or outcome produced by the strategy work.", "job_evidence": job_quote, "cv_evidence": ""},
+                {"tag": "strategy", "edit_type": "evidence_to_add", "suggestion": "If you have strategy experience, add the decision or outcome it produced.", "job_source_id": "J001", "cv_source_id": ""},
             ],
         }
         response = _FakeResponse({

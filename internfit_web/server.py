@@ -116,7 +116,7 @@ def _llm_log_fields(luna) -> dict[str, object]:
 
 
 class AppHandler(BaseHTTPRequestHandler):
-    server_version = "InternFit/0.4.2"
+    server_version = "InternFit/0.4.3"
 
     def _send(self, status: int, payload: bytes, content_type: str = "application/json; charset=utf-8") -> None:
         self.send_response(status)
@@ -135,7 +135,7 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send(200, (ROOT / "index.html").read_bytes(), "text/html; charset=utf-8")
             return
         if path == "/health":
-            self._json(200, {"status": "ok", "service": "InternFit", "version": "0.4.2"})
+            self._json(200, {"status": "ok", "service": "InternFit", "version": "0.4.3"})
             return
         self._json(404, {"error": "not_found"})
 
@@ -258,6 +258,8 @@ class AppHandler(BaseHTTPRequestHandler):
                 "llm_used": luna.used,
                 "llm_status": luna.status,
                 "llm_model": luna.model,
+                "cv_advice_source": trace_summary["cv_advice_source"],
+                "llm_gap_count": trace_summary["llm_gap_count"],
                 "analysis_id": analysis_id,
                 "evidence_storage_status": (
                     "stored" if telemetry_stored else "failed"

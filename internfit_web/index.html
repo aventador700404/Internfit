@@ -104,6 +104,7 @@
       .evidence-consent input { flex: 0 0 auto; width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--accent-deep); }
       .evidence-consent p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
       .result .evidence-status { margin-top: 16px; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+      .result .advice-source { margin: 0 0 10px; color: #b8c8bd; font-size: 11px; }
       @media (max-width: 780px) {
         .shell { padding: 20px 16px 38px; }
         .nav { gap: 12px; flex-wrap: wrap; align-items: center; }
@@ -179,7 +180,7 @@
             <div class="metrics"><div class="metric"><span>Decision</span><strong id="eligibility-value">—</strong></div><div class="metric"><span>Best evidence</span><strong id="best-evidence-value">—</strong></div><div class="metric"><span>CV edits</span><strong id="cv-edits-value">—</strong></div></div>
             <div class="evidence">
               <div class="evidence-box"><h3>Why it matches</h3><ul id="strengths-list"></ul></div>
-              <div class="evidence-box"><h3>Make the CV sharper</h3><ul id="gaps-list"></ul></div>
+              <div class="evidence-box"><h3>Make the CV sharper</h3><p class="advice-source" id="cv-advice-source"></p><ul id="gaps-list"></ul></div>
             </div>
             <p class="evidence-status" id="evidence-status"></p>
           </div>
@@ -213,6 +214,7 @@
       const cvEditsValue = document.querySelector('#cv-edits-value');
       const strengthsList = document.querySelector('#strengths-list');
       const gapsList = document.querySelector('#gaps-list');
+      const cvAdviceSource = document.querySelector('#cv-advice-source');
       const evidenceConsent = document.querySelector('#evidence-consent');
       const evidenceStatus = document.querySelector('#evidence-status');
       // Consent is scoped to the current upload, never restored from storage.
@@ -344,6 +346,9 @@
           : (data.evidence?.length ? data.evidence : data.strengths);
         renderList(strengthsList, explanations, 'positive', 'No direct evidence matched.');
         renderList(gapsList, gaps, 'gap', 'No obvious CV gaps found.');
+        cvAdviceSource.textContent = data.cv_advice_source === 'llm'
+          ? 'AI-assisted guidance'
+          : data.cv_advice_source === 'rule_based' ? 'Rule-based guidance' : '';
         const sharingStatus = {
           stored: 'Evidence shared to improve matching.',
           failed: 'Analysis complete. Evidence could not be saved.',
