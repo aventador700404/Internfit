@@ -61,6 +61,8 @@ SAFE_FIELDS = {
     "llm_estimated_cost_usd",
     "llm_budget_mode",
     "llm_error_type",
+    "llm_cache_status",
+    "llm_cache_age_seconds",
     "trace_version",
     "engine_version",
     "prompt_version",

@@ -2,6 +2,16 @@
 
 This file records user-visible changes to InternFit. Technical rationale is kept in [`docs/decisions.md`](docs/decisions.md).
 
+## [0.4.6] — 2026-09-29
+
+### Added
+
+- Reused validated AI results for identical CV/job content and analysis configuration for 30 minutes in bounded server memory.
+- Joined concurrent identical analyses into one model call; failed and fallback results remain retryable.
+- Kept current job-page fetching, scoring, filenames, application links, analysis references, and evidence-sharing choices independent of cached AI output.
+- Logged cache hits and ages with zero additional tokens or budget reservation on reused requests, and indicated reuse in the analysis status text.
+- Added expiry, memory bounds, concurrency, configuration-change, usage-accounting, and per-request sharing regression coverage.
+
 ## [0.4.5] — 2026-09-29
 
 ### Changed

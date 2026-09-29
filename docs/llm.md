@@ -9,6 +9,40 @@ job signals, and write more specific match/gap text. The Python engine still
 owns the final arithmetic, eligibility blockers for language and degree, role
 specific penalties, and score caps.
 
+## Temporary analysis cache
+
+Successful, validated Luna responses are reused for **30 minutes from
+completion**, without extending expiry on a hit. The process-local cache
+keeps only a digest key, validated semantic output (including selected short
+source evidence), validation diagnostics, and timestamps. It does not retain
+uploaded bytes, parsed CV/job objects, full source text, raw provider output,
+or request metadata such as analysis IDs, filenames, application URLs, and
+evidence-sharing choices. Selected evidence may still contain personal details.
+
+The key covers exact extracted CV text, job title/body, model, engine version,
+prompt/schema version, validator version, and model input/output limits. Each
+request still parses its CV and reads the current job page (or supplied text)
+before lookup. A changed page at the same URL therefore gets a fresh analysis.
+Changing only a filename or tracking URL can reuse the same AI output. Current
+request metadata and scoring are always reconstructed, so another request's
+filename, application link, reference, or sharing choice cannot be replayed.
+
+One in-flight computation per key serves concurrent identical requests. Reuse
+does not call the model or reserve budget; its token/cost fields are zero.
+Failed, disabled, budget-exhausted, or invalid responses are not retained for
+later requests. Current waiters share a failure instead of triggering a retry
+storm; a later request can retry normally. Removing the API key bypasses AI
+reuse as well as new provider calls.
+
+Bounds: 100 entries, 4 MiB serialized payload total, 64 KiB per entry, 32 unique
+in-flight keys, and a 30-second duplicate wait. A full pending table or wait
+timeout returns a retryable 503 instead of launching extra model requests.
+The HTTP server loop sweeps expired entries even when no new analyses arrive.
+A restart/deploy clears the cache; multiple processes would have independent
+caches. This is not a per-user quota or a replacement for broader abuse/load
+controls; CV parsing, OCR, URL fetching, scoring, and logging still occur.
+No new service, migration, or paid cache is required.
+
 ## Evaluation perspective and feedback language
 
 The system prompt asks Luna to adopt the perspective of a recruiter with

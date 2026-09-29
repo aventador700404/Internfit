@@ -48,6 +48,23 @@ proves semantic correctness: the chosen source can still be irrelevant or its
 meaning overstated. Job overlay tags are enum-filtered classifications, not
 quote-validated claims.
 
+## Cache observations
+
+`llm_cache_status` records `miss` (computed), `hit` (reused), `shared` (joined
+an in-flight computation), or `bypass` (AI disabled). `llm_cache_age_seconds`
+is the age since the reused computation completed. A reused successful result
+has `llm_status=cached` and `llm_used=true`: AI informed the result, but this
+request did not call the provider. Its input/output token counts, character
+counts, and estimated budget reservation are zero; only the original request
+records those usage amounts. Cache digests and source text never enter stdout.
+
+Every request gets a new `analysis_id` and a separate derived telemetry row.
+The current request's sharing checkbox alone controls its private evidence
+trace, including on cache hits. Cache state never carries that choice forward.
+For model-quality comparisons, exclude `hit`/`shared` rows to avoid counting
+the same AI output repeatedly. A shared failure retains its failure status
+and is not saved in the cache for future requests.
+
 ## Optional: short evidence excerpts
 
 The upload screen has a **Share evidence to improve matching** checkbox that

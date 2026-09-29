@@ -187,7 +187,7 @@
         </section>
       </section>
       <p class="footnote">CV parser connected · kept temporarily in this browser session · public-link extraction active for readable pages.</p>
-      <p class="privacy-note">Scores and detected categories are saved to improve matching. When AI is available, extracted CV and job text is sent to OpenAI. Short evidence excerpts are saved when “Share evidence” is checked. To request deletion of a shared record, give its result reference to InternFit’s owner.</p>
+      <p class="privacy-note">Scores and detected categories are saved to improve matching. When AI is available, extracted CV and job text is sent to OpenAI for new analyses. Successful AI feedback and its selected evidence are cached temporarily in server memory for 30 minutes. Short evidence excerpts are saved to review logs when “Share evidence” is checked. To request deletion of a shared record, give its result reference to InternFit’s owner.</p>
     </main>
     <script>
       const upload = document.querySelector('#cv-upload');
@@ -440,7 +440,9 @@
             data,
           });
           renderAnalysis(data, inputUrl, { scroll: true });
-          status.textContent = 'Analysis complete.';
+          status.textContent = data.llm_used && ['hit', 'shared'].includes(data.llm_cache_status)
+            ? 'Previous AI result reused — no new AI call.'
+            : 'Analysis complete.';
           const nextUrl = resultPageUrl();
           if (window.location.hash === '#result') {
             history.replaceState({ view: 'result' }, '', nextUrl);

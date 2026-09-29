@@ -18,14 +18,26 @@ if not CORE_ROOT.exists():  # local scratch layout used for offline tests
 sys.path.insert(0, str(CORE_ROOT))
 
 from core.cv_parser import parse_cv_bytes, parse_pdf_bytes  # noqa: E402
-from core.analysis_trace import CONSENT_VERSION, build_evidence_trace, build_trace_summary  # noqa: E402
+from core.analysis_trace import CONSENT_VERSION, build_evidence_trace, build_trace_summary, engine_version  # noqa: E402
+from core.analysis_cache import AnalysisCache, AnalysisBusyError, CachedAnalysis, analysis_cache_key  # noqa: E402
 from core.job_parser import fetch_job_posting, job_from_text  # noqa: E402
-from core.llm_client import analyze_with_luna  # noqa: E402
+from core.llm_client import DEFAULT_MODEL, analyze_with_luna  # noqa: E402
 from core.scoring import assess_fit  # noqa: E402
 from core.telemetry import emit_analysis_event, new_analysis_id, safe_url_domain  # noqa: E402
 
 
 MAX_REQUEST_BYTES = 8 * 1024 * 1024
+ANALYSIS_CACHE = AnalysisCache()
+
+
+def _analyze_cached(candidate, job, analysis_id) -> CachedAnalysis:
+    if not os.environ.get("OPENAI_API_KEY", "").strip():
+        return CachedAnalysis(analyze_with_luna(candidate, job, analysis_id), "bypass")
+    model = os.environ.get("OPENAI_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
+    key = analysis_cache_key(candidate, job, model=model, engine_version=engine_version())
+    return ANALYSIS_CACHE.get_or_compute(
+        key, lambda: analyze_with_luna(candidate, job, analysis_id),
+    )
 
 
 def _parse_multipart(body: bytes, content_type: str) -> dict[str, dict[str, str | bytes]]:
@@ -116,7 +128,7 @@ def _llm_log_fields(luna) -> dict[str, object]:
 
 
 class AppHandler(BaseHTTPRequestHandler):
-    server_version = "InternFit/0.4.5"
+    server_version = "InternFit/0.4.6"
 
     def _send(self, status: int, payload: bytes, content_type: str = "application/json; charset=utf-8") -> None:
         self.send_response(status)
@@ -135,7 +147,7 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send(200, (ROOT / "index.html").read_bytes(), "text/html; charset=utf-8")
             return
         if path == "/health":
-            self._json(200, {"status": "ok", "service": "InternFit", "version": "0.4.5"})
+            self._json(200, {"status": "ok", "service": "InternFit", "version": "0.4.6"})
             return
         self._json(404, {"error": "not_found"})
 
@@ -224,7 +236,8 @@ class AppHandler(BaseHTTPRequestHandler):
             # The LLM is an optional semantic layer. Missing keys, budget
             # exhaustion, provider failures, or invalid JSON all fall back to
             # the same deterministic engine used by the no-LLM beta.
-            luna = analyze_with_luna(candidate, job, analysis_id)
+            cached = _analyze_cached(candidate, job, analysis_id)
+            luna = cached.luna
             before: dict[str, object] = {}
             baseline = assess_fit(candidate, job, diagnostics=before)
             if luna.used:
@@ -243,6 +256,8 @@ class AppHandler(BaseHTTPRequestHandler):
                 **_result_log_fields(result),
                 **_llm_log_fields(luna),
                 **trace_summary,
+                llm_cache_status=cached.status,
+                llm_cache_age_seconds=cached.age_seconds,
                 evidence_storage_consent=evidence_consent,
                 consent_version=CONSENT_VERSION if evidence_consent else "",
                 duration_ms=round((time.perf_counter() - started_at) * 1000),
@@ -258,6 +273,8 @@ class AppHandler(BaseHTTPRequestHandler):
                 "llm_used": luna.used,
                 "llm_status": luna.status,
                 "llm_model": luna.model,
+                "llm_cache_status": cached.status,
+                "llm_cache_age_seconds": cached.age_seconds,
                 "cv_advice_source": trace_summary["cv_advice_source"],
                 "llm_gap_count": trace_summary["llm_gap_count"],
                 "analysis_id": analysis_id,
@@ -266,6 +283,10 @@ class AppHandler(BaseHTTPRequestHandler):
                 ) if evidence_consent else "not_requested",
             })
             self._json(200, response)
+        except AnalysisBusyError as exc:
+            emit_analysis_event("analysis_blocked", analysis_id, reason="analysis_busy",
+                duration_ms=round((time.perf_counter() - started_at) * 1000))
+            self._json(503, {"error": str(exc), "retry_after_seconds": 5})
         except (ValueError, KeyError) as exc:
             emit_analysis_event(
                 "analysis_error",
@@ -296,11 +317,16 @@ class AppHandler(BaseHTTPRequestHandler):
         print(f"[InternFit] {self.address_string()} - {format % args}")
 
 
+class AppServer(ThreadingHTTPServer):
+    def service_actions(self) -> None:
+        ANALYSIS_CACHE.prune()
+
+
 def main() -> None:
     requested_port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
     port = int(os.environ.get("PORT", requested_port))
     host = os.environ.get("HOST", "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1")
-    server = ThreadingHTTPServer((host, port), AppHandler)
+    server = AppServer((host, port), AppHandler)
     display_host = "127.0.0.1" if host == "0.0.0.0" else host
     print(f"InternFit running at http://{display_host}:{port}")
     try:
