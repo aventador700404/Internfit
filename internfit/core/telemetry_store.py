@@ -118,9 +118,9 @@ def build_storage_row(
     if (
         event == "analysis_completed"
         and payload.get("evidence_storage_consent") is True
-        and payload.get("consent_version") == "evidence-v1"
+        and payload.get("consent_version") == "evidence-v2-default-on"
         and isinstance(private_trace, Mapping)
-        and private_trace.get("consent_version") == "evidence-v1"
+        and private_trace.get("consent_version") == "evidence-v2-default-on"
     ):
         safe_payload["analysis_trace"] = dict(private_trace)
     return {

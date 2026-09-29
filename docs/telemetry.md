@@ -50,12 +50,19 @@ quote-validated claims.
 
 ## Optional: short evidence excerpts
 
-The upload screen has an unchecked **Share evidence to improve matching**
-checkbox. Consent is sent with the current notice version, is not restored
-from browser storage, and resets when another CV is selected. Analysis works
-with the checkbox off. Old clients without consent never store excerpts.
+The upload screen has a **Share evidence to improve matching** checkbox that
+is checked by default on each page load. The notice explains the default and
+how to turn sharing off before analysis. A user's choice stays unchanged when
+another CV is selected in the same page; the choice is not saved in browser
+storage. Analysis works with the checkbox off.
 
-With consent, the same private DB row includes `payload.analysis_trace`:
+The submitted setting uses notice version `evidence-v2-default-on`, so these
+records can be distinguished from the earlier default-off `evidence-v1`
+records. A checked default is not recorded as a separate affirmative opt-in.
+The server still requires an explicit true field and the current notice
+version; unchecked, missing, or outdated settings never store excerpts.
+
+With sharing enabled, the same private DB row includes `payload.analysis_trace`:
 
 - job title/company for identifying the case;
 - deduplicated `excerpts` with `cv-*` and `job-*` reference IDs;
@@ -92,7 +99,7 @@ uses `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_SECRET_KEY`).
 Keys stay on the server. The table has RLS and no browser-facing `anon` or
 `authenticated` access. There is no public log endpoint.
 
-In SQL Editor, find consented records:
+In SQL Editor, find shared evidence records:
 
 ```sql
 select analysis_id, occurred_at,

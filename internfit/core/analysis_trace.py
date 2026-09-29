@@ -1,8 +1,8 @@
-"""Bounded, opt-in evidence records for reviewing matching mistakes.
+"""Bounded, optional evidence records for reviewing matching mistakes.
 
 Derived diagnostics can be logged for every analysis. Source excerpts and
 model-written explanations are built separately and sent only to private DB
-storage after explicit per-upload consent. No extra model call is made.
+storage when the submitted sharing setting is enabled. No extra model call is made.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from .scoring import TAG_PATTERNS, _contains_term, _is_metadata_line
 
 
 TRACE_VERSION = "2"
-CONSENT_VERSION = "evidence-v1"
+CONSENT_VERSION = "evidence-v2-default-on"
 MAX_EXCERPT_CHARS = 280
 MAX_EXCERPTS_PER_SOURCE = 24
 

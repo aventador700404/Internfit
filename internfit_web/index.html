@@ -151,8 +151,8 @@
           </label>
           <div class="file-ready" id="file-ready"><span class="file-dot"></span><span class="file-name" id="file-name">CV uploaded</span><span class="file-state">Ready</span></div>
           <div class="evidence-consent">
-            <label for="evidence-consent"><input id="evidence-consent" type="checkbox" aria-describedby="evidence-consent-help" /><span>Share evidence to improve matching <span style="font-weight:400">(optional)</span></span></label>
-            <p id="evidence-consent-help">Let InternFit’s owner review short CV/job excerpts and analysis explanations. Excerpts may contain personal details. Your file and full documents are not saved on the server. You can still analyze with this off.</p>
+            <label for="evidence-consent"><input id="evidence-consent" type="checkbox" aria-describedby="evidence-consent-help" checked /><span>Share evidence to improve matching <span style="font-weight:400">(optional)</span></span></label>
+            <p id="evidence-consent-help">On by default. Uncheck before analyzing to turn sharing off. When checked, InternFit’s owner can review short CV/job excerpts and analysis explanations. Excerpts may contain personal details. Your file and full documents are not saved on the server. You can still analyze with this off.</p>
           </div>
         </article>
 
@@ -187,7 +187,7 @@
         </section>
       </section>
       <p class="footnote">CV parser connected · kept temporarily in this browser session · public-link extraction active for readable pages.</p>
-      <p class="privacy-note">Scores and detected categories are saved to improve matching. When AI is available, extracted CV and job text is sent to OpenAI. Evidence excerpts are saved only with your permission. To request deletion of a shared record, give its result reference to InternFit’s owner.</p>
+      <p class="privacy-note">Scores and detected categories are saved to improve matching. When AI is available, extracted CV and job text is sent to OpenAI. Short evidence excerpts are saved when “Share evidence” is checked. To request deletion of a shared record, give its result reference to InternFit’s owner.</p>
     </main>
     <script>
       const upload = document.querySelector('#cv-upload');
@@ -217,8 +217,8 @@
       const cvAdviceSource = document.querySelector('#cv-advice-source');
       const evidenceConsent = document.querySelector('#evidence-consent');
       const evidenceStatus = document.querySelector('#evidence-status');
-      // Consent is scoped to the current upload, never restored from storage.
-      evidenceConsent.checked = false;
+      // Default on at page load; keep the user's choice while changing CVs.
+      evidenceConsent.checked = true;
       let selectedFile = null;
       const hostLabel = value => {
         try { return new URL(value).hostname.replace(/^www\./, ''); } catch { return ''; }
@@ -241,7 +241,6 @@
       const setFile = file => {
         if (!file) return;
         selectedFile = file;
-        evidenceConsent.checked = false;
         try { sessionStorage.removeItem(CV_STORAGE_KEY); } catch {}
         fileName.textContent = file.name;
         fileReady.classList.add('active');
@@ -420,7 +419,7 @@
           form.append('cv', selectedFile, selectedFile.name);
           form.append('job_url', inputUrl);
           form.append('evidence_storage_consent', evidenceConsent.checked ? 'true' : 'false');
-          form.append('consent_version', 'evidence-v1');
+          form.append('consent_version', 'evidence-v2-default-on');
           const jobText = jobTextInput.value.trim();
           if (jobText) form.append('job_text', jobText);
           const response = await fetch('/api/analyze', { method: 'POST', body: form });

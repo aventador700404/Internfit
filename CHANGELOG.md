@@ -2,6 +2,14 @@
 
 This file records user-visible changes to InternFit. Technical rationale is kept in [`docs/decisions.md`](docs/decisions.md).
 
+## [0.4.5] — 2026-09-29
+
+### Changed
+
+- Checked optional evidence sharing by default on page load, with an explicit default-on notice and an available opt-out.
+- Preserved a user's sharing choice when changing CVs within the same page.
+- Versioned the default-on notice in stored records; unchecked, missing, or outdated settings still prevent evidence storage.
+
 ## [0.4.4] — 2026-09-29
 
 ### Improved

@@ -96,7 +96,7 @@ the semantic layer was used.
 
 Telemetry records status, token counts, budget reservations, and a same-input
 rule-only versus LLM-assisted score comparison. Source-validation outcomes are
-logged without source text. If a user explicitly opts in, bounded CV/job
+logged without source text. When the optional sharing setting is enabled, bounded CV/job
 excerpts and selected match/gap explanations are saved privately in Supabase
 for manual review; they never enter Render stdout. Full documents, uploaded
 files, raw prompts, and raw model responses are not retained. See
