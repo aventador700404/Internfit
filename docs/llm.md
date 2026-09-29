@@ -9,6 +9,31 @@ job signals, and write more specific match/gap text. The Python engine still
 owns the final arithmetic, eligibility blockers for language and degree, role
 specific penalties, and score caps.
 
+## Evaluation perspective and feedback language
+
+The system prompt asks Luna to adopt the perspective of a recruiter with
+10 years of internship hiring and CV review experience. Its evaluation rubric
+prioritizes actual work and personal contribution over keyword overlap,
+distinguishes required from preferred qualifications, recognizes defensible
+transferable experience, and treats missing CV evidence as unverified rather
+than proof of inability. Expectations are calibrated to the internship role,
+without aiming for a predetermined score or predicting hiring outcomes.
+This is a prompt instruction, not model training or a guarantee of accuracy.
+
+Both **Why it matches** and **Make the CV sharper** use the job posting's
+language for LLM-generated feedback: Korean duties/qualifications produce
+Korean explanations; English ones produce English explanations, regardless
+of the CV language. For bilingual postings the prompt selects the predominant
+language of the substantive duties and qualifications; a balanced posting
+uses its first substantive section. English technical terms or an English
+title within Korean job prose do not override that choice.
+
+Source quotes stay in their original language for validation. UI labels and
+existing deterministic guidance, including hard-requirement reminders and
+provider-failure fallbacks, retain their current language. Language selection
+and the evaluation rubric run inside the same single model request. The
+content-derived `prompt_version` in telemetry changes with these instructions.
+
 ## CV editing advice
 
 The same model call also powers **Make the CV sharper**. Bounded CV/job text

@@ -2,6 +2,15 @@
 
 This file records user-visible changes to InternFit. Technical rationale is kept in [`docs/decisions.md`](docs/decisions.md).
 
+## [0.4.4] — 2026-09-29
+
+### Improved
+
+- Added an internship-recruiter evaluation perspective emphasizing actual contribution, transferable experience, required versus preferred qualifications, and evidence-calibrated judgments.
+- Made both LLM match explanations and CV editing suggestions follow the job posting's language, independent of the CV language.
+- Clarified mixed-language posting behavior while retaining original-language evidence quotes, existing UI labels, and deterministic guidance.
+- Kept one Luna call per analysis and the existing scoring, budget, and source-validation paths.
+
 ## [0.4.3] — 2026-09-29
 
 ### Improved

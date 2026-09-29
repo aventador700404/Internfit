@@ -116,7 +116,7 @@ def _llm_log_fields(luna) -> dict[str, object]:
 
 
 class AppHandler(BaseHTTPRequestHandler):
-    server_version = "InternFit/0.4.3"
+    server_version = "InternFit/0.4.4"
 
     def _send(self, status: int, payload: bytes, content_type: str = "application/json; charset=utf-8") -> None:
         self.send_response(status)
@@ -135,7 +135,7 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send(200, (ROOT / "index.html").read_bytes(), "text/html; charset=utf-8")
             return
         if path == "/health":
-            self._json(200, {"status": "ok", "service": "InternFit", "version": "0.4.3"})
+            self._json(200, {"status": "ok", "service": "InternFit", "version": "0.4.4"})
             return
         self._json(404, {"error": "not_found"})
 
