@@ -1193,6 +1193,8 @@ def assess_fit(
     candidate: CandidateProfile,
     job: JobPosting,
     semantic: Mapping[str, object] | None = None,
+    *,
+    diagnostics: dict[str, object] | None = None,
 ) -> FitResult:
     # The title is usually the cleanest role signal; the body is cleaned by
     # the job parser before it reaches this function.
@@ -1285,23 +1287,60 @@ def assess_fit(
     }
 
     penalty_points, penalty_reasons = _specificity_penalties(candidate, domain_tags, text)
+    specificity_penalty_points = penalty_points
     score = max(0, min(100, sum(breakdown.values()) - penalty_points))
+    score_before_caps = score
     domain_cap, domain_cap_reason = _domain_score_cap(candidate, domain_tags)
     if domain_cap is not None and score > domain_cap:
         penalty_points += score - domain_cap
         score = domain_cap
         if domain_cap_reason:
             penalty_reasons.append(domain_cap_reason)
+    score_after_domain_cap = score
+    eligibility_cap = None
     if "Required graduate technical degree missing" in blockers:
         # A missing minimum-degree gate is materially different from a soft
         # skill gap; it should never look like an apply-now match.
         score = min(score, 45)
+        eligibility_cap = 45
     elif "Required technical degree missing" in blockers:
         score = min(score, 45)
+        eligibility_cap = 45
     elif blockers:
         # Eligibility is a separate gate: a strong-looking keyword match must
         # not wash out an explicit language requirement.
         score = min(score, 55)
+        eligibility_cap = 55
+
+    if diagnostics is not None:
+        # Derived fields only. Collect from the actual scoring pass so the
+        # trace cannot drift from the requirements, evidence, or caps used.
+        diagnostics.update({
+            "requirements": {
+                "responsibility_tags": sorted(responsibility_tags),
+                "domain_tags": sorted(domain_tags),
+                "preferred_tags": sorted(preferred_tags),
+                "preferred_domain_tags": sorted(preferred_domain_tags),
+                "required_tools": sorted(required_tools),
+                "preferred_tools": sorted(preferred_tools),
+                "required_languages": sorted(required_languages),
+                "preferred_languages": sorted(preferred_languages),
+            },
+            "core_checks": sorted(core_checks),
+            "passed_core_checks": sorted(passed_checks),
+            "candidate_tag_strengths": {
+                tag: _candidate_tag_strength(candidate, tag)
+                for tag in sorted(candidate.evidence_tags | responsibility_tags | domain_tags | preferred_tags)
+            },
+            "subtotal": sum(breakdown.values()),
+            "specificity_penalty_points": specificity_penalty_points,
+            "score_before_caps": score_before_caps,
+            "domain_cap": domain_cap,
+            "domain_cap_applied": score_after_domain_cap < score_before_caps,
+            "score_after_domain_cap": score_after_domain_cap,
+            "eligibility_cap": eligibility_cap,
+            "eligibility_cap_applied": score < score_after_domain_cap,
+        })
 
     strengths_set = {
         tag

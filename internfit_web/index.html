@@ -99,6 +99,11 @@
       .gap::before { content: "→"; color: #ffcb82; margin-right: 7px; font-weight: 900; }
       .footnote { margin: 21px 0 0; color: var(--muted); font-size: 12px; }
       .privacy-note { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+      .evidence-consent { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+      .evidence-consent label { display: flex; gap: 9px; align-items: flex-start; color: var(--ink); line-height: 1.5; cursor: pointer; }
+      .evidence-consent input { flex: 0 0 auto; width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--accent-deep); }
+      .evidence-consent p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+      .result .evidence-status { margin-top: 16px; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
       @media (max-width: 780px) {
         .shell { padding: 20px 16px 38px; }
         .nav { gap: 12px; flex-wrap: wrap; align-items: center; }
@@ -144,6 +149,10 @@
             </div>
           </label>
           <div class="file-ready" id="file-ready"><span class="file-dot"></span><span class="file-name" id="file-name">CV uploaded</span><span class="file-state">Ready</span></div>
+          <div class="evidence-consent">
+            <label for="evidence-consent"><input id="evidence-consent" type="checkbox" aria-describedby="evidence-consent-help" /><span>Share evidence to improve matching <span style="font-weight:400">(optional)</span></span></label>
+            <p id="evidence-consent-help">Let InternFit’s owner review short CV/job excerpts and analysis explanations. Excerpts may contain personal details. Your file and full documents are not saved on the server. You can still analyze with this off.</p>
+          </div>
         </article>
 
         <article class="panel">
@@ -172,11 +181,12 @@
               <div class="evidence-box"><h3>Why it matches</h3><ul id="strengths-list"></ul></div>
               <div class="evidence-box"><h3>Make the CV sharper</h3><ul id="gaps-list"></ul></div>
             </div>
+            <p class="evidence-status" id="evidence-status"></p>
           </div>
         </section>
       </section>
       <p class="footnote">CV parser connected · kept temporarily in this browser session · public-link extraction active for readable pages.</p>
-      <p class="privacy-note">For engine calibration, this beta stores anonymous derived signals such as score and detected categories. CV files and job text are not stored.</p>
+      <p class="privacy-note">Scores and detected categories are saved to improve matching. When AI is available, extracted CV and job text is sent to OpenAI. Evidence excerpts are saved only with your permission. To request deletion of a shared record, give its result reference to InternFit’s owner.</p>
     </main>
     <script>
       const upload = document.querySelector('#cv-upload');
@@ -203,6 +213,10 @@
       const cvEditsValue = document.querySelector('#cv-edits-value');
       const strengthsList = document.querySelector('#strengths-list');
       const gapsList = document.querySelector('#gaps-list');
+      const evidenceConsent = document.querySelector('#evidence-consent');
+      const evidenceStatus = document.querySelector('#evidence-status');
+      // Consent is scoped to the current upload, never restored from storage.
+      evidenceConsent.checked = false;
       let selectedFile = null;
       const hostLabel = value => {
         try { return new URL(value).hostname.replace(/^www\./, ''); } catch { return ''; }
@@ -225,6 +239,7 @@
       const setFile = file => {
         if (!file) return;
         selectedFile = file;
+        evidenceConsent.checked = false;
         try { sessionStorage.removeItem(CV_STORAGE_KEY); } catch {}
         fileName.textContent = file.name;
         fileReady.classList.add('active');
@@ -329,6 +344,12 @@
           : (data.evidence?.length ? data.evidence : data.strengths);
         renderList(strengthsList, explanations, 'positive', 'No direct evidence matched.');
         renderList(gapsList, gaps, 'gap', 'No obvious CV gaps found.');
+        const sharingStatus = {
+          stored: 'Evidence shared to improve matching.',
+          failed: 'Analysis complete. Evidence could not be saved.',
+          not_requested: 'Evidence excerpts were not shared.',
+        }[data.evidence_storage_status] || '';
+        evidenceStatus.textContent = data.analysis_id ? `${sharingStatus} Reference: ${data.analysis_id}` : '';
         result.classList.remove('active');
         if (animate) void result.offsetWidth;
         result.classList.add('active');
@@ -387,11 +408,14 @@
         }
         status.textContent = 'Reading the CV and job posting…';
         analyzeButton.disabled = true;
+        evidenceConsent.disabled = true;
         analyzeButton.textContent = 'Analyzing…';
         try {
           const form = new FormData();
           form.append('cv', selectedFile, selectedFile.name);
           form.append('job_url', inputUrl);
+          form.append('evidence_storage_consent', evidenceConsent.checked ? 'true' : 'false');
+          form.append('consent_version', 'evidence-v1');
           const jobText = jobTextInput.value.trim();
           if (jobText) form.append('job_text', jobText);
           const response = await fetch('/api/analyze', { method: 'POST', body: form });
@@ -412,6 +436,7 @@
             data,
           });
           renderAnalysis(data, inputUrl, { scroll: true });
+          status.textContent = 'Analysis complete.';
           const nextUrl = resultPageUrl();
           if (window.location.hash === '#result') {
             history.replaceState({ view: 'result' }, '', nextUrl);
@@ -422,6 +447,7 @@
           status.textContent = error instanceof Error ? error.message : 'The analysis could not be completed.';
         } finally {
           analyzeButton.disabled = false;
+          evidenceConsent.disabled = false;
           analyzeButton.innerHTML = 'Analyze fit <span aria-hidden="true">→</span>';
         }
       });

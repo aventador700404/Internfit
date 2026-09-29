@@ -1,8 +1,7 @@
 """Optional durable storage for privacy-conscious analysis telemetry.
 
-The beta keeps Render stdout logs as the fallback. When Supabase credentials
-are configured on the server, the same derived event is appended to a private
-Postgres table through Supabase's REST Data API.
+Render stdout contains derived fields only. Opt-in evidence excerpts are
+included only in the private Supabase row, never in the stdout fallback.
 """
 
 from __future__ import annotations
@@ -62,19 +61,45 @@ SAFE_FIELDS = {
     "llm_estimated_cost_usd",
     "llm_budget_mode",
     "llm_error_type",
+    "trace_version",
+    "engine_version",
+    "prompt_version",
+    "validator_version",
+    "code_revision",
+    "rule_only_score",
+    "rule_only_breakdown",
+    "rule_only_blockers",
+    "rule_only_penalty_reasons",
+    "llm_score_delta",
+    "breakdown_delta",
+    "scoring_diagnostics",
+    "llm_candidate_tags",
+    "llm_added_candidate_tags",
+    "llm_job_overlay",
+    "llm_validation",
+    "llm_source_truncated",
+    "evidence_storage_consent",
+    "consent_version",
 }
 
 
 def _settings() -> tuple[str, str] | None:
     base_url = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+    service_key = (
+        os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
+        or os.environ.get("SUPABASE_SECRET_KEY", "").strip()
+    )
     parsed = urlparse(base_url)
     if parsed.scheme != "https" or not parsed.netloc or not service_key:
         return None
     return base_url, service_key
 
 
-def build_storage_row(payload: Mapping[str, object]) -> dict[str, object] | None:
+def build_storage_row(
+    payload: Mapping[str, object],
+    *,
+    private_trace: Mapping[str, object] | None = None,
+) -> dict[str, object] | None:
     """Build the only shape allowed to leave the application for storage."""
     event = str(payload.get("event", ""))
     analysis_id = str(payload.get("analysis_id", ""))
@@ -86,6 +111,14 @@ def build_storage_row(payload: Mapping[str, object]) -> dict[str, object] | None
         for key in SAFE_FIELDS
         if key in payload
     }
+    if (
+        event == "analysis_completed"
+        and payload.get("evidence_storage_consent") is True
+        and payload.get("consent_version") == "evidence-v1"
+        and isinstance(private_trace, Mapping)
+        and private_trace.get("consent_version") == "evidence-v1"
+    ):
+        safe_payload["analysis_trace"] = dict(private_trace)
     return {
         "event_id": uuid.uuid4().hex,
         "analysis_id": analysis_id,
@@ -95,7 +128,11 @@ def build_storage_row(payload: Mapping[str, object]) -> dict[str, object] | None
     }
 
 
-def persist_analysis_event(payload: Mapping[str, object]) -> bool:
+def persist_analysis_event(
+    payload: Mapping[str, object],
+    *,
+    private_trace: Mapping[str, object] | None = None,
+) -> bool:
     """Append one event to Supabase, returning False on disabled/failed storage.
 
     Persistence is deliberately best-effort: a database outage must never make
@@ -105,7 +142,7 @@ def persist_analysis_event(payload: Mapping[str, object]) -> bool:
     settings = _settings()
     if settings is None:
         return False
-    row = build_storage_row(payload)
+    row = build_storage_row(payload, private_trace=private_trace)
     if row is None:
         return False
 

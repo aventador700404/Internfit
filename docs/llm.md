@@ -39,5 +39,10 @@ exhausted, the provider times out, or the response fails validation. The
 result exposes `analysis_mode` and `llm_status` so the owner can tell whether
 the semantic layer was used.
 
-Telemetry stores status, token counts, estimated cost, and score outputs. It
-does not store raw CV text, job text, uploaded files, prompts, or model output.
+Telemetry records status, token counts, budget reservations, and a same-input
+rule-only versus LLM-assisted score comparison. Source-validation outcomes are
+logged without source text. If a user explicitly opts in, bounded CV/job
+excerpts and selected match/gap explanations are saved privately in Supabase
+for manual review; they never enter Render stdout. Full documents, uploaded
+files, raw prompts, and raw model responses are not retained. See
+[`telemetry.md`](telemetry.md) for fields, limits, consent, and deletion.

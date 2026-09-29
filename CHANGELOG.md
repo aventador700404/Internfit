@@ -2,6 +2,17 @@
 
 This file records user-visible changes to InternFit. Technical rationale is kept in [`docs/decisions.md`](docs/decisions.md).
 
+## [0.4.2] — 2026-09-29
+
+### Added
+
+- Added optional, versioned consent to save short CV/job excerpts and explanations privately in Supabase for engine review.
+- Recorded rule-only and LLM-assisted scores for the same input, component differences, requirements, evidence strengths, penalties, and caps without another model call.
+- Recorded source-validation acceptance/rejection reasons and engine/prompt versions, without retaining rejected quotes or raw model responses.
+- Kept excerpts out of Render logs and updated privacy copy to describe owner review and OpenAI processing accurately.
+- Displayed each analysis reference and whether evidence storage succeeded; DB failure leaves the analysis usable.
+- Added consent, source-linkage, masking, storage-failure, and multipart integration coverage. Scoring weights and the mobile layout remain unchanged.
+
 ## [0.4.1] — 2026-09-27
 
 ### Fixed

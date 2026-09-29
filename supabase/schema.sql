@@ -1,6 +1,9 @@
 -- Run this once in the Supabase SQL Editor.
--- The table stores derived calibration telemetry only; it never receives CV
--- bytes, CV text, job text, filenames, contact details, or full URLs.
+-- The table stores derived calibration telemetry and, only with explicit
+-- versioned consent, bounded CV/job excerpts in payload.analysis_trace.
+-- Excerpts can contain personal details. No file bytes, full documents,
+-- filenames, full URLs, or raw prompts/model responses are retained.
+-- Existing installations need no migration for the optional JSONB fields.
 
 create table if not exists public.analysis_events (
   event_id text primary key,

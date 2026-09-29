@@ -8,6 +8,7 @@ deterministic scorer remains responsible for the final score and eligibility.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 import json
 import os
 import re
@@ -45,6 +46,7 @@ class LunaResult:
     estimated_cost_usd: float = 0.0
     budget_mode: str = ""
     error_type: str = ""
+    validation: list[dict[str, object]] = field(default_factory=list)
 
 
 def _bounded_text(text: str, limit: int) -> str:
@@ -171,6 +173,12 @@ careful semantic normalization only:
   may not have.
 """
 
+# A content-derived version changes whenever the prompt or output schema does.
+PROMPT_VERSION = hashlib.sha256(
+    (SYSTEM_PROMPT + json.dumps(_schema(), sort_keys=True)).encode("utf-8")
+).hexdigest()[:12]
+VALIDATOR_VERSION = "source-quotes-v1"
+
 
 def _build_prompt(candidate: CandidateProfile, job: JobPosting) -> str:
     return (
@@ -200,11 +208,31 @@ def _extract_output_text(payload: dict[str, Any]) -> str:
     return ""
 
 
-def _validated_semantic(raw: object, candidate: CandidateProfile, job: JobPosting) -> dict[str, Any] | None:
+def _validated_semantic(
+    raw: object,
+    candidate: CandidateProfile,
+    job: JobPosting,
+    diagnostics: list[dict[str, object]] | None = None,
+) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
     tags = set(ALLOWED_TAGS)
     tools = set(ALLOWED_TOOLS)
+
+    def record(section: str, index: int, item: object, reason: str = "") -> None:
+        if diagnostics is None:
+            return
+        tag = item.get("tag") if isinstance(item, dict) else None
+        strength = item.get("strength") if isinstance(item, dict) else None
+        diagnostics.append({
+            "section": section,
+            "index": index,
+            "tag": tag if isinstance(tag, str) and tag in tags else "unknown",
+            "strength": strength if isinstance(strength, str) and strength in {"direct", "supporting"} else "",
+            "status": "rejected" if reason else "accepted",
+            "reason": reason or "source_verified",
+        })
+
     job_overlay = {
         "responsibility_tags": _string_list(raw.get("job_core_responsibility_tags"), tags, 12),
         "domain_tags": _string_list(raw.get("job_core_domain_tags"), set(DOMAIN_TAGS), 12),
@@ -217,55 +245,72 @@ def _validated_semantic(raw: object, candidate: CandidateProfile, job: JobPostin
     semantic_strengths: dict[str, int] = {}
     evidence_items = raw.get("candidate_evidence", [])
     if isinstance(evidence_items, list):
-        for item in evidence_items[:16]:
+        for index, item in enumerate(evidence_items[:16]):
             if not isinstance(item, dict):
+                record("candidate_evidence", index, item, "invalid_item")
                 continue
             tag = item.get("tag")
             strength = item.get("strength")
             quote = str(item.get("evidence", "")).strip()
-            if not isinstance(tag, str) or tag not in tags or strength not in {"direct", "supporting"}:
+            if not isinstance(tag, str) or tag not in tags:
+                record("candidate_evidence", index, item, "invalid_tag")
+                continue
+            if not isinstance(strength, str) or strength not in {"direct", "supporting"}:
+                record("candidate_evidence", index, item, "invalid_strength")
                 continue
             if not _quote_in_text(quote, candidate.raw_text):
+                record("candidate_evidence", index, item, "cv_quote_not_found_or_too_short")
                 continue
+            record("candidate_evidence", index, item)
             semantic_evidence.setdefault(tag, []).append(quote)
             semantic_strengths[tag] = max(semantic_strengths.get(tag, 0), 2 if strength == "direct" else 1)
 
     matches: list[dict[str, str]] = []
     raw_matches = raw.get("matches", [])
     if isinstance(raw_matches, list):
-        for item in raw_matches[:4]:
+        for index, item in enumerate(raw_matches[:4]):
             if not isinstance(item, dict):
+                record("matches", index, item, "invalid_item")
                 continue
             tag = item.get("tag")
             statement = str(item.get("statement", "")).strip()
             quote = str(item.get("cv_evidence", "")).strip()
-            if (
-                isinstance(tag, str)
-                and tag in tags
-                and 12 <= len(statement) <= 280
-                and _quote_in_text(quote, candidate.raw_text)
-                and tag in semantic_evidence
-            ):
+            reason = ""
+            if not isinstance(tag, str) or tag not in tags:
+                reason = "invalid_tag"
+            elif not 12 <= len(statement) <= 280:
+                reason = "invalid_statement_length"
+            elif not _quote_in_text(quote, candidate.raw_text):
+                reason = "cv_quote_not_found_or_too_short"
+            elif tag not in semantic_evidence:
+                reason = "no_accepted_candidate_evidence"
+            record("matches", index, item, reason)
+            if not reason:
                 matches.append({"tag": tag, "statement": statement, "cv_evidence": quote})
 
     gaps: list[dict[str, str]] = []
     raw_gaps = raw.get("gaps", [])
     source_job = "\n".join((job.title, job.text))
     if isinstance(raw_gaps, list):
-        for item in raw_gaps[:6]:
+        for index, item in enumerate(raw_gaps[:6]):
             if not isinstance(item, dict):
+                record("gaps", index, item, "invalid_item")
                 continue
             tag = item.get("tag")
             suggestion = str(item.get("suggestion", "")).strip()
             job_quote = str(item.get("job_evidence", "")).strip()
             cv_quote = str(item.get("cv_evidence", "")).strip()
-            if (
-                isinstance(tag, str)
-                and tag in tags
-                and 12 <= len(suggestion) <= 300
-                and _quote_in_text(job_quote, source_job)
-                and (not cv_quote or _quote_in_text(cv_quote, candidate.raw_text))
-            ):
+            reason = ""
+            if not isinstance(tag, str) or tag not in tags:
+                reason = "invalid_tag"
+            elif not 12 <= len(suggestion) <= 300:
+                reason = "invalid_suggestion_length"
+            elif not _quote_in_text(job_quote, source_job):
+                reason = "job_quote_not_found_or_too_short"
+            elif cv_quote and not _quote_in_text(cv_quote, candidate.raw_text):
+                reason = "cv_quote_not_found_or_too_short"
+            record("gaps", index, item, reason)
+            if not reason:
                 gaps.append({
                     "tag": tag,
                     "suggestion": suggestion,
@@ -385,7 +430,8 @@ def analyze_with_luna(candidate: CandidateProfile, job: JobPosting, analysis_id:
             budget_mode=reservation.mode,
         )
 
-    semantic = _validated_semantic(raw, candidate, job)
+    validation: list[dict[str, object]] = []
+    semantic = _validated_semantic(raw, candidate, job, diagnostics=validation)
     if semantic is None:
         return LunaResult(
             status="invalid_output",
@@ -401,6 +447,7 @@ def analyze_with_luna(candidate: CandidateProfile, job: JobPosting, analysis_id:
         status="used",
         model=model,
         semantic=semantic,
+        validation=validation,
         used=True,
         input_chars=input_chars,
         output_chars=len(output_text),

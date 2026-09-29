@@ -18,6 +18,7 @@ if not CORE_ROOT.exists():  # local scratch layout used for offline tests
 sys.path.insert(0, str(CORE_ROOT))
 
 from core.cv_parser import parse_cv_bytes, parse_pdf_bytes  # noqa: E402
+from core.analysis_trace import CONSENT_VERSION, build_evidence_trace, build_trace_summary  # noqa: E402
 from core.job_parser import fetch_job_posting, job_from_text  # noqa: E402
 from core.llm_client import analyze_with_luna  # noqa: E402
 from core.scoring import assess_fit  # noqa: E402
@@ -115,7 +116,7 @@ def _llm_log_fields(luna) -> dict[str, object]:
 
 
 class AppHandler(BaseHTTPRequestHandler):
-    server_version = "InternFit/0.4"
+    server_version = "InternFit/0.4.2"
 
     def _send(self, status: int, payload: bytes, content_type: str = "application/json; charset=utf-8") -> None:
         self.send_response(status)
@@ -134,7 +135,7 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send(200, (ROOT / "index.html").read_bytes(), "text/html; charset=utf-8")
             return
         if path == "/health":
-            self._json(200, {"status": "ok", "service": "InternFit", "version": "0.4"})
+            self._json(200, {"status": "ok", "service": "InternFit", "version": "0.4.2"})
             return
         self._json(404, {"error": "not_found"})
 
@@ -166,6 +167,10 @@ class AppHandler(BaseHTTPRequestHandler):
                 return
 
             fields = _parse_multipart(self.rfile.read(length), self.headers.get("Content-Type", ""))
+            evidence_consent = (
+                _text_field(fields, "evidence_storage_consent") == "true"
+                and _text_field(fields, "consent_version") == CONSENT_VERSION
+            )
             cv = fields.get("cv", {}).get("data", b"")
             filename = str(fields.get("cv", {}).get("filename", "uploaded_cv.docx"))
             if not isinstance(cv, bytes) or not cv:
@@ -220,14 +225,26 @@ class AppHandler(BaseHTTPRequestHandler):
             # exhaustion, provider failures, or invalid JSON all fall back to
             # the same deterministic engine used by the no-LLM beta.
             luna = analyze_with_luna(candidate, job, analysis_id)
-            result = assess_fit(candidate, job, semantic=luna.semantic if luna.used else None)
-            emit_analysis_event(
+            before: dict[str, object] = {}
+            baseline = assess_fit(candidate, job, diagnostics=before)
+            if luna.used:
+                after: dict[str, object] = {}
+                result = assess_fit(candidate, job, semantic=luna.semantic, diagnostics=after)
+            else:
+                result, after = baseline, before
+            trace_summary = build_trace_summary(candidate, job, luna, baseline, result, before, after)
+            private_trace = build_evidence_trace(candidate, job, luna, result, after) if evidence_consent else None
+            telemetry_stored = emit_analysis_event(
                 "analysis_completed",
                 analysis_id,
+                private_trace=private_trace,
                 **_candidate_log_fields(candidate, len(cv), cv_format),
                 **_job_log_fields(job, job_url, analysis_source, job_fetch_status),
                 **_result_log_fields(result),
                 **_llm_log_fields(luna),
+                **trace_summary,
+                evidence_storage_consent=evidence_consent,
+                consent_version=CONSENT_VERSION if evidence_consent else "",
                 duration_ms=round((time.perf_counter() - started_at) * 1000),
             )
             response = asdict(result)
@@ -241,6 +258,10 @@ class AppHandler(BaseHTTPRequestHandler):
                 "llm_used": luna.used,
                 "llm_status": luna.status,
                 "llm_model": luna.model,
+                "analysis_id": analysis_id,
+                "evidence_storage_status": (
+                    "stored" if telemetry_stored else "failed"
+                ) if evidence_consent else "not_requested",
             })
             self._json(200, response)
         except (ValueError, KeyError) as exc:
