@@ -104,6 +104,85 @@ class LunaClientTests(unittest.TestCase):
         self.assertNotIn(cv_quote, request_body["input"][0]["content"][0]["text"])
         self.assertIn(cv_quote, request_body["input"][1]["content"][0]["text"])
 
+    def test_incomplete_response_logs_output_token_limit_reason(self):
+        response = _FakeResponse({
+            "status": "incomplete",
+            "incomplete_details": {"reason": "max_output_tokens"},
+            "output_text": '{"candidate_evidence":[',
+            "usage": {"input_tokens": 5500, "output_tokens": 1800},
+        })
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "server-test-key"}, clear=True), patch(
+            "core.llm_client.urlopen", return_value=response
+        ):
+            result = analyze_with_luna(_candidate(), _job(), "analysis-output-cap")
+
+        self.assertEqual(result.status, "invalid_output")
+        self.assertEqual(result.failure_stage, "api_response")
+        self.assertEqual(result.failure_reason, "max_output_tokens")
+        self.assertEqual(result.response_status, "incomplete")
+        self.assertEqual(result.incomplete_reason, "max_output_tokens")
+        self.assertEqual(result.output_tokens, 1800)
+
+    def test_invalid_json_is_distinguished_from_provider_truncation(self):
+        response = _FakeResponse({
+            "status": "completed",
+            "output_text": "not valid JSON",
+            "usage": {"input_tokens": 100, "output_tokens": 25},
+        })
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "server-test-key"}, clear=True), patch(
+            "core.llm_client.urlopen", return_value=response
+        ):
+            result = analyze_with_luna(_candidate(), _job(), "analysis-invalid-json")
+
+        self.assertEqual(result.status, "invalid_output")
+        self.assertEqual(result.failure_stage, "json_parse")
+        self.assertEqual(result.failure_reason, "invalid_json")
+        self.assertEqual(result.response_status, "completed")
+
+    def test_non_object_json_is_classified_as_semantic_validation_failure(self):
+        response = _FakeResponse({"status": "completed", "output_text": "[]"})
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "server-test-key"}, clear=True), patch(
+            "core.llm_client.urlopen", return_value=response
+        ):
+            result = analyze_with_luna(_candidate(), _job(), "analysis-not-object")
+
+        self.assertEqual(result.status, "invalid_output")
+        self.assertEqual(result.failure_stage, "semantic_validation")
+        self.assertEqual(result.failure_reason, "root_not_object")
+
+    def test_rejected_evidence_is_counted_without_logging_quote_text(self):
+        rejected_quote = "This quote does not occur in the CV."
+        output = {
+            "job_core_responsibility_tags": [],
+            "job_core_domain_tags": [],
+            "job_preferred_tags": [],
+            "job_preferred_domain_tags": [],
+            "job_required_tools": [],
+            "job_preferred_tools": [],
+            "candidate_evidence": [
+                {"tag": "stakeholder", "strength": "direct", "evidence": rejected_quote},
+            ],
+            "matches": [],
+            "gaps": [],
+        }
+        response = _FakeResponse({"status": "completed", "output_text": json.dumps(output)})
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "server-test-key"}, clear=True), patch(
+            "core.llm_client.urlopen", return_value=response
+        ):
+            result = analyze_with_luna(_candidate(), _job(), "analysis-rejected-evidence")
+
+        self.assertTrue(result.used)
+        self.assertEqual(
+            result.validation_summary["candidate_evidence"],
+            {
+                "received": 1,
+                "accepted": 0,
+                "rejected": 1,
+                "rejection_reasons": {"cv_quote_not_found_or_too_short": 1},
+            },
+        )
+        self.assertNotIn(rejected_quote, json.dumps(result.validation_summary))
+
     def test_provider_failure_returns_fallback_status(self):
         with patch.dict(os.environ, {"OPENAI_API_KEY": "server-test-key"}, clear=True), patch(
             "core.llm_client.urlopen", side_effect=OSError("network unavailable")
@@ -113,6 +192,8 @@ class LunaClientTests(unittest.TestCase):
         self.assertEqual(result.status, "api_error")
         self.assertFalse(result.used)
         self.assertTrue(result.error_type)
+        self.assertEqual(result.failure_stage, "api_request")
+        self.assertEqual(result.failure_reason, "network_error")
 
     def test_budget_guard_blocks_before_provider_call(self):
         with patch.dict(

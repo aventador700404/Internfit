@@ -2,6 +2,15 @@
 
 This file records user-visible changes to InternFit. Technical rationale is kept in [`docs/decisions.md`](docs/decisions.md).
 
+## [0.4.7] — 2026-10-01
+
+### Improved
+
+- Recorded provider response status and incomplete reason to identify output-token truncation.
+- Distinguished API/network failures, empty/refusal responses, JSON parsing failures, and semantic validation failures in internal telemetry.
+- Added per-section counts of accepted and rejected evidence, matches, and CV edits with rejection reasons; raw model output and source text remain excluded.
+- Added regression coverage for truncation, malformed JSON, semantic validation, privacy allowlisting, and persisted diagnostics.
+
 ## [0.4.6] — 2026-09-29
 
 ### Added

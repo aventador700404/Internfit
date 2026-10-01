@@ -29,6 +29,15 @@ means no successful write was confirmed. DB failures never block scoring.
 - `llm_candidate_tags`, `llm_added_candidate_tags`, and `llm_job_overlay`.
 - `llm_validation`: accepted/rejected candidate evidence, matches and gaps,
   with section/index/tag/strength and rejection reason, never rejected quotes.
+- `llm_response_status`, `llm_incomplete_reason`, `llm_failure_stage`, and
+  `llm_failure_reason`: distinguish provider truncation (including
+  `max_output_tokens`), API/network failure, empty/refusal output, JSON parse
+  failure, and semantic validation failure. These fields contain only bounded
+  status/code labels, not provider messages or response text.
+- `llm_validation_summary`: per-section received/accepted/rejected counts and
+  rejection-reason counts for candidate evidence, matches, and CV edits. This
+  reveals evidence-check failures even when another valid part of the semantic
+  response was still used.
 - `cv_advice_source`, `llm_gap_count`, `llm_gap_rejected_count`, `llm_gap_status`:
   whether CV advice came from the LLM and whether suggestions were accepted,
   partly rejected, all rejected, absent, or unavailable. Gap validation includes

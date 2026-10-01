@@ -18,6 +18,17 @@ class TelemetryStoreTests(unittest.TestCase):
             "job_text": "private job content",
             "filename": "secret.pdf",
             "full_url": "https://example.com/private?id=secret",
+            "llm_failure_stage": "api_response",
+            "llm_failure_reason": "max_output_tokens",
+            "llm_validation_summary": {
+                "candidate_evidence": {
+                    "received": 1,
+                    "accepted": 0,
+                    "rejected": 1,
+                    "rejection_reasons": {"cv_quote_not_found_or_too_short": 1},
+                },
+            },
+            "llm_raw_output": "private model response",
         })
 
         self.assertIsNotNone(row)
@@ -25,7 +36,10 @@ class TelemetryStoreTests(unittest.TestCase):
         self.assertNotIn("job_text", row["payload"])
         self.assertNotIn("filename", row["payload"])
         self.assertNotIn("full_url", row["payload"])
+        self.assertNotIn("llm_raw_output", row["payload"])
         self.assertEqual(row["payload"]["score"], 61)
+        self.assertEqual(row["payload"]["llm_failure_reason"], "max_output_tokens")
+        self.assertEqual(row["payload"]["llm_validation_summary"]["candidate_evidence"]["rejected"], 1)
 
     def test_disabled_without_server_credentials(self):
         with patch.dict(os.environ, {}, clear=True), patch("core.telemetry_store.urlopen") as urlopen:

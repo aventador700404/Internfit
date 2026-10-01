@@ -117,7 +117,9 @@ class AnalysisCache:
             reusable = LunaResult(
                 status="cached" if luna.used else luna.status,
                 model=luna.model, semantic=luna.semantic, used=luna.used,
-                validation=luna.validation, error_type=luna.error_type,
+                validation=luna.validation,
+                validation_summary=luna.validation_summary,
+                error_type=luna.error_type,
                 budget_mode="cache" if luna.used else "shared",
             )
             blob = json.dumps(asdict(reusable), ensure_ascii=False, separators=(",", ":")).encode("utf-8")

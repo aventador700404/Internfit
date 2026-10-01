@@ -124,11 +124,16 @@ def _llm_log_fields(luna) -> dict[str, object]:
         "llm_estimated_cost_usd": luna.estimated_cost_usd,
         "llm_budget_mode": luna.budget_mode,
         "llm_error_type": luna.error_type,
+        "llm_response_status": luna.response_status,
+        "llm_incomplete_reason": luna.incomplete_reason,
+        "llm_failure_stage": luna.failure_stage,
+        "llm_failure_reason": luna.failure_reason,
+        "llm_validation_summary": luna.validation_summary,
     }
 
 
 class AppHandler(BaseHTTPRequestHandler):
-    server_version = "InternFit/0.4.6"
+    server_version = "InternFit/0.4.7"
 
     def _send(self, status: int, payload: bytes, content_type: str = "application/json; charset=utf-8") -> None:
         self.send_response(status)
@@ -147,7 +152,7 @@ class AppHandler(BaseHTTPRequestHandler):
             self._send(200, (ROOT / "index.html").read_bytes(), "text/html; charset=utf-8")
             return
         if path == "/health":
-            self._json(200, {"status": "ok", "service": "InternFit", "version": "0.4.6"})
+            self._json(200, {"status": "ok", "service": "InternFit", "version": "0.4.7"})
             return
         self._json(404, {"error": "not_found"})
 

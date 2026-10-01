@@ -49,6 +49,11 @@ class LunaResult:
     budget_mode: str = ""
     error_type: str = ""
     validation: list[dict[str, object]] = field(default_factory=list)
+    response_status: str = ""
+    incomplete_reason: str = ""
+    failure_stage: str = ""
+    failure_reason: str = ""
+    validation_summary: dict[str, Any] = field(default_factory=dict)
 
 
 def _bounded_text(text: str, limit: int) -> str:
@@ -291,6 +296,54 @@ def _extract_output_text(payload: dict[str, Any]) -> str:
     return ""
 
 
+def _safe_provider_label(value: object) -> str:
+    """Keep provider enum/code fields useful without logging arbitrary text."""
+    if not isinstance(value, str):
+        return ""
+    value = value.strip()
+    return value[:64] if re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", value) else ""
+
+
+def _has_refusal(payload: dict[str, Any]) -> bool:
+    output = payload.get("output", [])
+    if not isinstance(output, list):
+        return False
+    return any(
+        isinstance(content, dict) and content.get("type") == "refusal"
+        for item in output if isinstance(item, dict)
+        for content in item.get("content", []) if isinstance(item.get("content"), list)
+    )
+
+
+def _usage_int(value: object) -> int:
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _validation_summary(validation: list[dict[str, object]]) -> dict[str, Any]:
+    """Summarize validator outcomes without retaining model text or CV quotes."""
+    summary: dict[str, Any] = {}
+    for section in ("candidate_evidence", "matches", "gaps"):
+        entries = [item for item in validation if item.get("section") == section]
+        rejected: dict[str, int] = {}
+        for item in entries:
+            if item.get("status") != "rejected":
+                continue
+            reason = item.get("reason")
+            if isinstance(reason, str) and reason:
+                rejected[reason] = rejected.get(reason, 0) + 1
+        accepted = sum(item.get("status") == "accepted" for item in entries)
+        summary[section] = {
+            "received": len(entries),
+            "accepted": accepted,
+            "rejected": len(entries) - accepted,
+            "rejection_reasons": dict(sorted(rejected.items())),
+        }
+    return summary
+
+
 def _validated_semantic(
     raw: object,
     candidate: CandidateProfile,
@@ -479,7 +532,7 @@ def analyze_with_luna(candidate: CandidateProfile, job: JobPosting, analysis_id:
     )
     try:
         with urlopen(request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
-            response_payload = json.loads(response.read(512_000).decode("utf-8"))
+            response_body = response.read(512_000)
     except HTTPError as exc:
         return LunaResult(
             status="api_error",
@@ -488,8 +541,13 @@ def analyze_with_luna(candidate: CandidateProfile, job: JobPosting, analysis_id:
             estimated_cost_usd=reservation.estimated_cost_usd,
             budget_mode=reservation.mode,
             error_type=f"HTTP{exc.code}",
+            failure_stage="api_request",
+            failure_reason="http_error",
         )
-    except (URLError, TimeoutError, OSError, ValueError, TypeError, UnicodeDecodeError) as exc:
+    except (URLError, TimeoutError, OSError, TypeError, ValueError) as exc:
+        is_timeout = isinstance(exc, TimeoutError) or (
+            isinstance(exc, URLError) and isinstance(exc.reason, TimeoutError)
+        )
         return LunaResult(
             status="api_error",
             model=model,
@@ -497,6 +555,22 @@ def analyze_with_luna(candidate: CandidateProfile, job: JobPosting, analysis_id:
             estimated_cost_usd=reservation.estimated_cost_usd,
             budget_mode=reservation.mode,
             error_type=type(exc).__name__,
+            failure_stage="api_request",
+            failure_reason="timeout" if is_timeout else "network_error",
+        )
+
+    try:
+        response_payload = json.loads(response_body.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return LunaResult(
+            status="api_error",
+            model=model,
+            input_chars=input_chars,
+            estimated_cost_usd=reservation.estimated_cost_usd,
+            budget_mode=reservation.mode,
+            error_type="InvalidResponseJSON",
+            failure_stage="response_decode",
+            failure_reason="invalid_json_envelope",
         )
 
     if not isinstance(response_payload, dict):
@@ -506,55 +580,103 @@ def analyze_with_luna(candidate: CandidateProfile, job: JobPosting, analysis_id:
             input_chars=input_chars,
             estimated_cost_usd=reservation.estimated_cost_usd,
             budget_mode=reservation.mode,
+            failure_stage="response_envelope",
+            failure_reason="root_not_object",
         )
 
     output_text = _extract_output_text(response_payload)
-    usage = response_payload.get("usage", {}) if isinstance(response_payload, dict) else {}
-    def _usage_int(value: object) -> int:
-        try:
-            return max(0, int(value or 0))
-        except (TypeError, ValueError):
-            return 0
-
+    usage = response_payload.get("usage", {})
     input_tokens = _usage_int(usage.get("input_tokens", 0)) if isinstance(usage, dict) else 0
     output_tokens = _usage_int(usage.get("output_tokens", 0)) if isinstance(usage, dict) else 0
+    response_status = _safe_provider_label(response_payload.get("status"))
+    incomplete_details = response_payload.get("incomplete_details", {})
+    incomplete_reason = _safe_provider_label(
+        incomplete_details.get("reason") if isinstance(incomplete_details, dict) else ""
+    )
+    result_context = {
+        "model": model,
+        "input_chars": input_chars,
+        "output_chars": len(output_text),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "estimated_cost_usd": reservation.estimated_cost_usd,
+        "budget_mode": reservation.mode,
+        "response_status": response_status,
+        "incomplete_reason": incomplete_reason,
+    }
+
+    if response_status == "incomplete":
+        return LunaResult(
+            status="invalid_output",
+            **result_context,
+            failure_stage="api_response",
+            failure_reason=incomplete_reason or "incomplete_reason_unavailable",
+        )
+
+    provider_error = response_payload.get("error")
+    if response_status == "failed" or isinstance(provider_error, dict):
+        error_code = _safe_provider_label(
+            provider_error.get("code") if isinstance(provider_error, dict) else ""
+        )
+        return LunaResult(
+            status="api_error",
+            **result_context,
+            error_type=error_code,
+            failure_stage="api_response",
+            failure_reason=error_code or "provider_response_failed",
+        )
+
+    if response_status and response_status != "completed":
+        return LunaResult(
+            status="invalid_output",
+            **result_context,
+            failure_stage="api_response",
+            failure_reason="response_not_completed",
+        )
+
+    if not output_text.strip():
+        return LunaResult(
+            status="invalid_output",
+            **result_context,
+            failure_stage="output_extraction",
+            failure_reason="refusal" if _has_refusal(response_payload) else "empty_output",
+        )
+
     try:
         raw = json.loads(output_text)
     except (json.JSONDecodeError, TypeError):
         return LunaResult(
             status="invalid_output",
-            model=model,
-            input_chars=input_chars,
-            output_chars=len(output_text),
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            estimated_cost_usd=reservation.estimated_cost_usd,
-            budget_mode=reservation.mode,
+            **result_context,
+            failure_stage="json_parse",
+            failure_reason="invalid_json",
+        )
+
+    if not isinstance(raw, dict):
+        return LunaResult(
+            status="invalid_output",
+            **result_context,
+            failure_stage="semantic_validation",
+            failure_reason="root_not_object",
         )
 
     validation: list[dict[str, object]] = []
     semantic = _validated_semantic(raw, candidate, job, diagnostics=validation, sources=sources)
+    validation_summary = _validation_summary(validation)
     if semantic is None:
         return LunaResult(
             status="invalid_output",
-            model=model,
-            input_chars=input_chars,
-            output_chars=len(output_text),
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            estimated_cost_usd=reservation.estimated_cost_usd,
-            budget_mode=reservation.mode,
+            **result_context,
+            validation=validation,
+            validation_summary=validation_summary,
+            failure_stage="semantic_validation",
+            failure_reason="semantic_rejected",
         )
     return LunaResult(
         status="used",
-        model=model,
+        **result_context,
         semantic=semantic,
         validation=validation,
+        validation_summary=validation_summary,
         used=True,
-        input_chars=input_chars,
-        output_chars=len(output_text),
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        estimated_cost_usd=reservation.estimated_cost_usd,
-        budget_mode=reservation.mode,
     )
